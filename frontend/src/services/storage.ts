@@ -8,7 +8,7 @@ export interface Resident {
   id: string;
   name: string;
   unit: string;
-  phone: string;
+  aadhar_masked: string;
   vehicle_plate: string;
   photo_base64: string;
   status: string;
@@ -32,12 +32,24 @@ export async function getLocalResidents(): Promise<Resident[]> {
 }
 
 export async function saveLocalResidents(residents: Resident[]): Promise<void> {
-  await AsyncStorage.setItem(RESIDENTS_KEY, JSON.stringify(residents));
+  // Deduplicate by id - keep latest version
+  const map = new Map<string, Resident>();
+  for (const r of residents) {
+    map.set(r.id, r);
+  }
+  const deduped = Array.from(map.values());
+  await AsyncStorage.setItem(RESIDENTS_KEY, JSON.stringify(deduped));
 }
 
 export async function getResidentById(id: string): Promise<Resident | null> {
   const residents = await getLocalResidents();
   return residents.find(r => r.id === id) || null;
+}
+
+export async function deleteLocalResident(id: string): Promise<void> {
+  const residents = await getLocalResidents();
+  const filtered = residents.filter(r => r.id !== id);
+  await AsyncStorage.setItem(RESIDENTS_KEY, JSON.stringify(filtered));
 }
 
 // Access Logs
@@ -49,7 +61,6 @@ export async function getLocalAccessLogs(): Promise<AccessLogEntry[]> {
 export async function addAccessLog(log: AccessLogEntry): Promise<void> {
   const logs = await getLocalAccessLogs();
   logs.unshift(log);
-  // Keep max 500 entries
   const trimmed = logs.slice(0, 500);
   await AsyncStorage.setItem(ACCESS_LOGS_KEY, JSON.stringify(trimmed));
 }

@@ -27,7 +27,7 @@ class Resident(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     unit: str
-    phone: str
+    aadhar_masked: str = ""
     vehicle_plate: Optional[str] = ""
     photo_base64: Optional[str] = ""
     status: str = "active"
@@ -36,9 +36,10 @@ class Resident(BaseModel):
 
 
 class ResidentCreate(BaseModel):
+    id: Optional[str] = None
     name: str
     unit: str
-    phone: str
+    aadhar_masked: str = ""
     vehicle_plate: Optional[str] = ""
     photo_base64: Optional[str] = ""
     status: str = "active"
@@ -47,7 +48,7 @@ class ResidentCreate(BaseModel):
 class ResidentUpdate(BaseModel):
     name: Optional[str] = None
     unit: Optional[str] = None
-    phone: Optional[str] = None
+    aadhar_masked: Optional[str] = None
     vehicle_plate: Optional[str] = None
     photo_base64: Optional[str] = None
     status: Optional[str] = None
@@ -75,7 +76,7 @@ SEED_RESIDENTS = [
         "id": "RES001",
         "name": "Rajesh Kumar",
         "unit": "A-101",
-        "phone": "+91 98765 43210",
+        "aadhar_masked": "XXXX-XXXX-4523",
         "vehicle_plate": "KA 01 AB 1234",
         "photo_base64": "",
         "status": "active",
@@ -86,7 +87,7 @@ SEED_RESIDENTS = [
         "id": "RES002",
         "name": "Priya Sharma",
         "unit": "B-205",
-        "phone": "+91 87654 32109",
+        "aadhar_masked": "XXXX-XXXX-7891",
         "vehicle_plate": "KA 02 CD 5678",
         "photo_base64": "",
         "status": "active",
@@ -97,7 +98,7 @@ SEED_RESIDENTS = [
         "id": "RES003",
         "name": "Amit Patel",
         "unit": "C-302",
-        "phone": "+91 76543 21098",
+        "aadhar_masked": "XXXX-XXXX-3456",
         "vehicle_plate": "KA 03 EF 9012",
         "photo_base64": "",
         "status": "active",
@@ -108,7 +109,7 @@ SEED_RESIDENTS = [
         "id": "RES004",
         "name": "Sneha Reddy",
         "unit": "A-404",
-        "phone": "+91 65432 10987",
+        "aadhar_masked": "XXXX-XXXX-6789",
         "vehicle_plate": "",
         "photo_base64": "",
         "status": "active",
@@ -119,7 +120,7 @@ SEED_RESIDENTS = [
         "id": "RES005",
         "name": "Mohammed Ali",
         "unit": "D-102",
-        "phone": "+91 54321 09876",
+        "aadhar_masked": "XXXX-XXXX-1234",
         "vehicle_plate": "KA 05 GH 3456",
         "photo_base64": "",
         "status": "inactive",
@@ -156,9 +157,18 @@ async def get_resident(resident_id: str):
 
 @api_router.post("/residents", response_model=Resident)
 async def create_resident(data: ResidentCreate):
-    resident = Resident(**data.dict())
-    await db.residents.insert_one(resident.dict())
-    result = await db.residents.find_one({"id": resident.id}, {"_id": 0})
+    resident_dict = data.dict()
+    if not resident_dict.get("id"):
+        resident_dict["id"] = f"RES{str(uuid.uuid4())[:6].upper()}"
+    resident_dict["created_at"] = datetime.now(timezone.utc).isoformat()
+    resident_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
+    # Upsert - if id exists, update; otherwise insert
+    await db.residents.update_one(
+        {"id": resident_dict["id"]},
+        {"$set": resident_dict},
+        upsert=True
+    )
+    result = await db.residents.find_one({"id": resident_dict["id"]}, {"_id": 0})
     return result
 
 
@@ -181,7 +191,7 @@ async def delete_resident(resident_id: str):
     result = await db.residents.delete_one({"id": resident_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Resident not found")
-    return {"message": "Resident deleted"}
+    return {"message": "Resident deleted", "id": resident_id}
 
 
 # Access logs endpoints

@@ -6,12 +6,6 @@ export async function fetchAllResidents() {
   return res.json();
 }
 
-export async function fetchResident(id: string) {
-  const res = await fetch(`${BACKEND_URL}/api/residents/${id}`);
-  if (!res.ok) throw new Error('Resident not found');
-  return res.json();
-}
-
 export async function syncResidents() {
   const res = await fetch(`${BACKEND_URL}/api/sync`);
   if (!res.ok) throw new Error('Sync failed');
@@ -34,11 +28,11 @@ export async function postAccessLog(data: {
 }
 
 export async function createResident(data: {
+  id?: string;
   name: string;
   unit: string;
-  phone: string;
+  aadhar_masked?: string;
   vehicle_plate?: string;
-  photo_base64?: string;
 }) {
   const res = await fetch(`${BACKEND_URL}/api/residents`, {
     method: 'POST',
@@ -46,16 +40,6 @@ export async function createResident(data: {
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('Failed to create resident');
-  return res.json();
-}
-
-export async function updateResident(id: string, data: Record<string, string>) {
-  const res = await fetch(`${BACKEND_URL}/api/residents/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error('Failed to update resident');
   return res.json();
 }
 
