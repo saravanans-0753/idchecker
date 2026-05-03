@@ -108,7 +108,7 @@ export default function ScannerScreen() {
     loadResidentCount();
   };
 
-  // RESULT SCREEN - full size photo + compact details below
+  // RESULT SCREEN - full screen portrait photo
   if (showResult) {
     return (
       <SafeAreaView style={styles.container}>
@@ -118,16 +118,18 @@ export default function ScannerScreen() {
               <Ionicons name="close-circle" size={48} color="#FFFFFF" />
               <Text style={styles.bannerText}>NOT FOUND</Text>
             </View>
-            <Text style={styles.notFoundText}>
-              No resident found with this ID.{'\n'}Verify the barcode or contact admin.
-            </Text>
+            <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24}}>
+              <Text style={styles.notFoundText}>
+                No resident found with this ID.{'\n'}Verify the barcode or contact admin.
+              </Text>
+            </View>
             <TouchableOpacity testID="close-result-btn" style={styles.scanNextBtn} onPress={resetScan}>
               <Text style={styles.scanNextText}>SCAN NEXT</Text>
             </TouchableOpacity>
           </View>
         ) : resident ? (
           <View style={styles.resultFull}>
-            {/* Status Banner */}
+            {/* Status Banner - thin */}
             <View
               style={[
                 styles.statusBanner,
@@ -136,7 +138,7 @@ export default function ScannerScreen() {
             >
               <Ionicons
                 name={resident.status === 'active' ? 'checkmark-circle' : 'ban'}
-                size={36}
+                size={28}
                 color="#FFFFFF"
               />
               <Text style={styles.bannerText}>
@@ -144,41 +146,40 @@ export default function ScannerScreen() {
               </Text>
             </View>
 
-            {/* Full Size Photo */}
+            {/* FULL SCREEN PORTRAIT PHOTO - takes all remaining space */}
             <View style={styles.photoFull}>
               <Text style={styles.photoFullInitial}>
                 {resident.name.charAt(0).toUpperCase()}
               </Text>
+              <Text style={styles.photoName}>{resident.name}</Text>
             </View>
 
-            {/* Compact Details - all in rows below photo */}
-            <View style={styles.compactDetails}>
-              <View style={styles.compactRow}>
-                <Text style={styles.compactLabel}>ID</Text>
-                <Text testID="resident-id-display" style={styles.compactValue}>{resident.id}</Text>
+            {/* Single compact info bar */}
+            <View style={styles.infoBar}>
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>ID</Text>
+                <Text testID="resident-id-display" style={styles.infoValue}>{resident.id}</Text>
               </View>
-              <View style={styles.compactRow}>
-                <Text style={styles.compactLabel}>NAME</Text>
-                <Text testID="resident-name" style={styles.compactValueBold}>{resident.name}</Text>
+              <View style={styles.infoSep} />
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>FLAT</Text>
+                <Text testID="resident-unit" style={styles.infoValue}>{resident.unit}</Text>
               </View>
-              <View style={styles.compactRow}>
-                <Text style={styles.compactLabel}>FLAT</Text>
-                <Text testID="resident-unit" style={styles.compactValue}>{resident.unit}</Text>
+              <View style={styles.infoSep} />
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>AADHAR</Text>
+                <Text testID="resident-aadhar" style={styles.infoValue}>{resident.aadhar_masked || 'N/A'}</Text>
               </View>
-              <View style={styles.compactRow}>
-                <Text style={styles.compactLabel}>AADHAR</Text>
-                <Text testID="resident-aadhar" style={styles.compactValue}>{resident.aadhar_masked || 'N/A'}</Text>
-              </View>
-              {resident.vehicle_plate ? (
-                <View style={styles.compactRow}>
-                  <Text style={styles.compactLabel}>VEHICLE</Text>
-                  <Text testID="resident-vehicle" style={styles.compactValue}>{resident.vehicle_plate}</Text>
-                </View>
-              ) : null}
             </View>
+            {resident.vehicle_plate ? (
+              <View style={styles.vehicleBar}>
+                <Ionicons name="car" size={16} color="#475569" />
+                <Text testID="resident-vehicle" style={styles.vehicleText}>{resident.vehicle_plate}</Text>
+              </View>
+            ) : null}
 
             <TouchableOpacity testID="close-result-btn" style={styles.scanNextBtn} onPress={resetScan}>
-              <Ionicons name="scan" size={22} color="#FFFFFF" />
+              <Ionicons name="scan" size={20} color="#FFFFFF" />
               <Text style={styles.scanNextText}>SCAN NEXT</Text>
             </TouchableOpacity>
           </View>
@@ -318,19 +319,22 @@ const styles = StyleSheet.create({
   actionButton: { marginTop: 20, height: 56, paddingHorizontal: 28, backgroundColor: '#0055FF', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#000000' },
   actionButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900', letterSpacing: 1 },
   // Result screen
-  resultFull: { flex: 1, padding: 16 },
-  statusBanner: { height: 72, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 12 },
+  resultFull: { flex: 1 },
+  statusBanner: { height: 52, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 10 },
   verifiedBanner: { backgroundColor: '#00C853' },
   deniedBanner: { backgroundColor: '#FF3B30' },
-  bannerText: { fontSize: 28, fontWeight: '900', color: '#FFFFFF' },
-  notFoundText: { fontSize: 16, color: '#475569', textAlign: 'center', lineHeight: 24, marginTop: 24 },
-  photoFull: { width: '100%', aspectRatio: 1, maxHeight: 280, backgroundColor: '#0055FF', justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#000000', marginTop: 12, alignSelf: 'center' },
-  photoFullInitial: { fontSize: 120, fontWeight: '900', color: '#FFFFFF' },
-  compactDetails: { marginTop: 16, borderWidth: 2, borderColor: '#000000', backgroundColor: '#F8FAFC', padding: 12 },
-  compactRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-  compactLabel: { width: 70, fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 1 },
-  compactValue: { flex: 1, fontSize: 16, fontWeight: '700', color: '#000000' },
-  compactValueBold: { flex: 1, fontSize: 18, fontWeight: '900', color: '#000000' },
-  scanNextBtn: { height: 64, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 10, borderWidth: 2, borderColor: '#000000', marginTop: 16 },
-  scanNextText: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', letterSpacing: 1 },
+  bannerText: { fontSize: 24, fontWeight: '900', color: '#FFFFFF' },
+  notFoundText: { fontSize: 16, color: '#475569', textAlign: 'center', lineHeight: 24 },
+  photoFull: { flex: 1, width: '100%', backgroundColor: '#0055FF', justifyContent: 'center', alignItems: 'center' },
+  photoFullInitial: { fontSize: 200, fontWeight: '900', color: '#FFFFFF', opacity: 0.9 },
+  photoName: { fontSize: 28, fontWeight: '900', color: '#FFFFFF', marginTop: -10 },
+  infoBar: { flexDirection: 'row', backgroundColor: '#0F172A', paddingVertical: 10, paddingHorizontal: 12 },
+  infoItem: { flex: 1, alignItems: 'center' },
+  infoLabel: { fontSize: 9, fontWeight: '700', color: '#94A3B8', letterSpacing: 1 },
+  infoValue: { fontSize: 13, fontWeight: '900', color: '#FFFFFF', marginTop: 2 },
+  infoSep: { width: 1, backgroundColor: '#334155' },
+  vehicleBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 6, backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  vehicleText: { fontSize: 13, fontWeight: '700', color: '#475569' },
+  scanNextBtn: { height: 52, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 },
+  scanNextText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900', letterSpacing: 1 },
 });
