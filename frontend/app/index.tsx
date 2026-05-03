@@ -4,12 +4,12 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Modal,
   ScrollView,
   TextInput,
-  Alert,
   Platform,
   ActivityIndicator,
+  SafeAreaView,
+  AppState,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,9 +32,28 @@ export default function ScannerScreen() {
   const [loading, setLoading] = useState(false);
   const [residentCount, setResidentCount] = useState(0);
 
+  // Load resident count on mount and when app state changes
   useEffect(() => {
     loadResidentCount();
+    
+    // Reload count when app comes to foreground or component becomes visible
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        loadResidentCount();
+      }
+    });
+    
+    return () => {
+      subscription.remove();
+    };
   }, []);
+  
+  // Also reload count when returning from result screen
+  useEffect(() => {
+    if (!showResult) {
+      loadResidentCount();
+    }
+  }, [showResult]);
 
   const loadResidentCount = async () => {
     const residents = await getLocalResidents();
@@ -54,7 +73,6 @@ export default function ScannerScreen() {
     if (found) {
       setResident(found);
       setNotFound(false);
-      // Log the access
       const logEntry: AccessLogEntry = {
         id: Date.now().toString(),
         resident_id: found.id,
@@ -64,7 +82,6 @@ export default function ScannerScreen() {
         status: found.status === 'active' ? 'verified' : 'denied',
       };
       await addAccessLog(logEntry);
-      // Try to post online (non-blocking)
       try {
         await postAccessLog({
           resident_id: found.id,
@@ -72,9 +89,7 @@ export default function ScannerScreen() {
           unit: found.unit,
           status: logEntry.status,
         });
-      } catch (_) {
-        // Offline - that's fine
-      }
+      } catch (_) {}
     } else {
       setResident(null);
       setNotFound(true);
@@ -95,7 +110,99 @@ export default function ScannerScreen() {
     setShowResult(false);
     setResident(null);
     setNotFound(false);
+    loadResidentCount();
   };
+
+  // Show result screen (full screen overlay)
+  if (showResult) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.resultFullScreen}>
+          {notFound ? (
+            <View style={styles.resultContent}>
+              <View style={[styles.statusBanner, styles.deniedBanner]}>
+                <Ionicons name="close-circle" size={48} color="#FFFFFF" />
+                <Text style={styles.bannerText}>NOT FOUND</Text>
+              </View>
+              <Text style={styles.notFoundText}>
+                No resident found with this ID.{'\n'}Verify the barcode or contact admin.
+              </Text>
+            </View>
+          ) : resident ? (
+            <View style={styles.resultContent}>
+              <View
+                style={[
+                  styles.statusBanner,
+                  resident.status === 'active' ? styles.verifiedBanner : styles.deniedBanner,
+                ]}
+              >
+                <Ionicons
+                  name={resident.status === 'active' ? 'checkmark-circle' : 'ban'}
+                  size={48}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.bannerText}>
+                  {resident.status === 'active' ? 'VERIFIED' : 'INACTIVE'}
+                </Text>
+              </View>
+
+              {/* Photo */}
+              <View style={styles.photoContainer}>
+                {resident.photo_base64 ? (
+                  <View style={styles.photoPlaceholder}>
+                    <Text style={styles.photoInitial}>
+                      {resident.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.photoPlaceholder}>
+                    <Text style={styles.photoInitial}>
+                      {resident.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Details */}
+              <View style={styles.detailCard}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>NAME</Text>
+                  <Text testID="resident-name" style={styles.detailValue}>{resident.name}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>UNIT / FLAT</Text>
+                  <Text testID="resident-unit" style={styles.detailValue}>{resident.unit}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>PHONE</Text>
+                  <Text testID="resident-phone" style={styles.detailValue}>{resident.phone}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>VEHICLE</Text>
+                  <Text testID="resident-vehicle" style={styles.detailValue}>
+                    {resident.vehicle_plate || 'N/A'}
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>RESIDENT ID</Text>
+                  <Text testID="resident-id-display" style={styles.detailValueMono}>{resident.id}</Text>
+                </View>
+              </View>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            testID="close-result-btn"
+            style={styles.closeButton}
+            onPress={resetScan}
+          >
+            <Ionicons name="scan" size={24} color="#FFFFFF" />
+            <Text style={styles.closeButtonText}>SCAN NEXT</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   // Permission not determined yet
   if (!permission) {
@@ -106,15 +213,22 @@ export default function ScannerScreen() {
     );
   }
 
-  // Permission denied
+  // Permission denied - show manual entry
   if (!permission.granted) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.statusBar}>
+          <View style={[styles.statusDot, residentCount > 0 ? styles.dotOnline : styles.dotOffline]} />
+          <Text style={styles.statusText}>
+            {residentCount} RESIDENTS IN LOCAL DB
+          </Text>
+        </View>
+
         <View style={styles.permissionBox}>
-          <Ionicons name="camera-outline" size={64} color="#0F172A" />
-          <Text style={styles.permissionTitle}>CAMERA ACCESS REQUIRED</Text>
+          <Ionicons name="camera-outline" size={56} color="#0F172A" />
+          <Text style={styles.permissionTitle}>CAMERA ACCESS</Text>
           <Text style={styles.permissionText}>
-            Camera is needed to scan resident ID barcodes
+            Grant camera to scan barcodes
           </Text>
           <TouchableOpacity
             testID="grant-camera-permission-btn"
@@ -123,52 +237,49 @@ export default function ScannerScreen() {
           >
             <Text style={styles.actionButtonText}>GRANT PERMISSION</Text>
           </TouchableOpacity>
-
-          {/* Manual entry fallback */}
-          <View style={styles.manualSection}>
-            <Text style={styles.manualLabel}>OR ENTER ID MANUALLY</Text>
-            <View style={styles.manualRow}>
-              <TextInput
-                testID="manual-id-input"
-                style={styles.manualInput}
-                value={manualId}
-                onChangeText={setManualId}
-                placeholder="e.g. RES001"
-                placeholderTextColor="#94A3B8"
-              />
-              <TouchableOpacity
-                testID="manual-lookup-btn"
-                style={styles.lookupBtn}
-                onPress={handleManualLookup}
-              >
-                <Text style={styles.lookupBtnText}>LOOK UP</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
         </View>
 
-        {/* Result Modal */}
-        <ResultModal
-          visible={showResult}
-          resident={resident}
-          notFound={notFound}
-          onClose={resetScan}
-        />
-      </View>
+        {/* Manual Entry */}
+        <View style={styles.manualSection}>
+          <Text style={styles.manualLabel}>MANUAL ID ENTRY</Text>
+          <View style={styles.manualRow}>
+            <TextInput
+              testID="manual-id-input"
+              style={styles.manualInput}
+              value={manualId}
+              onChangeText={setManualId}
+              placeholder="e.g. RES001"
+              placeholderTextColor="#94A3B8"
+              autoCapitalize="characters"
+            />
+            <TouchableOpacity
+              testID="manual-lookup-btn"
+              style={styles.lookupBtn}
+              onPress={handleManualLookup}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.lookupBtnText}>LOOK UP</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
     );
   }
 
+  // Camera view with scanner
   return (
-    <View style={styles.container}>
-      {/* Status Bar */}
+    <SafeAreaView style={styles.container}>
       <View style={styles.statusBar}>
-        <View style={styles.statusDot} />
+        <View style={[styles.statusDot, residentCount > 0 ? styles.dotOnline : styles.dotOffline]} />
         <Text style={styles.statusText}>
           {residentCount} RESIDENTS IN LOCAL DB
         </Text>
       </View>
 
-      {/* Camera Scanner */}
       {!scanned && (
         <View style={styles.cameraContainer}>
           <CameraView
@@ -192,7 +303,7 @@ export default function ScannerScreen() {
         </View>
       )}
 
-      {scanned && !showResult && loading && (
+      {scanned && loading && (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0055FF" />
           <Text style={styles.loadingText}>LOOKING UP...</Text>
@@ -210,120 +321,23 @@ export default function ScannerScreen() {
             onChangeText={setManualId}
             placeholder="Enter Resident ID"
             placeholderTextColor="#94A3B8"
+            autoCapitalize="characters"
           />
           <TouchableOpacity
             testID="manual-lookup-btn-scanner"
             style={styles.lookupBtn}
             onPress={handleManualLookup}
+            disabled={loading}
           >
-            <Ionicons name="search" size={20} color="#FFFFFF" />
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Ionicons name="search" size={22} color="#FFFFFF" />
+            )}
           </TouchableOpacity>
         </View>
       </View>
-
-      {/* Result Modal */}
-      <ResultModal
-        visible={showResult}
-        resident={resident}
-        notFound={notFound}
-        onClose={resetScan}
-      />
-    </View>
-  );
-}
-
-function ResultModal({
-  visible,
-  resident,
-  notFound,
-  onClose,
-}: {
-  visible: boolean;
-  resident: Resident | null;
-  notFound: boolean;
-  onClose: () => void;
-}) {
-  if (!visible) return null;
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          {notFound ? (
-            <View style={styles.resultContainer}>
-              <View style={[styles.statusBanner, styles.deniedBanner]}>
-                <Ionicons name="close-circle" size={40} color="#FFFFFF" />
-                <Text style={styles.bannerText}>NOT FOUND</Text>
-              </View>
-              <Text style={styles.notFoundText}>
-                No resident found with this ID. Verify the barcode or contact admin.
-              </Text>
-            </View>
-          ) : resident ? (
-            <View style={styles.resultContainer}>
-              <View
-                style={[
-                  styles.statusBanner,
-                  resident.status === 'active' ? styles.verifiedBanner : styles.deniedBanner,
-                ]}
-              >
-                <Ionicons
-                  name={resident.status === 'active' ? 'checkmark-circle' : 'ban'}
-                  size={40}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.bannerText}>
-                  {resident.status === 'active' ? 'VERIFIED' : 'INACTIVE'}
-                </Text>
-              </View>
-
-              <ScrollView style={styles.detailsScroll}>
-                {/* Photo placeholder */}
-                <View style={styles.photoContainer}>
-                  <Ionicons name="person" size={64} color="#475569" />
-                </View>
-
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>NAME</Text>
-                  <Text testID="resident-name" style={styles.detailValue}>{resident.name}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>UNIT / FLAT</Text>
-                  <Text testID="resident-unit" style={styles.detailValue}>{resident.unit}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>PHONE</Text>
-                  <Text testID="resident-phone" style={styles.detailValue}>{resident.phone}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>VEHICLE</Text>
-                  <Text testID="resident-vehicle" style={styles.detailValue}>
-                    {resident.vehicle_plate || 'N/A'}
-                  </Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>RESIDENT ID</Text>
-                  <Text testID="resident-id-display" style={styles.detailValueMono}>{resident.id}</Text>
-                </View>
-              </ScrollView>
-            </View>
-          ) : null}
-
-          <TouchableOpacity
-            testID="close-result-btn"
-            style={styles.closeButton}
-            onPress={onClose}
-          >
-            <Text style={styles.closeButtonText}>SCAN NEXT</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
+    </SafeAreaView>
   );
 }
 
@@ -345,8 +359,13 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#00C853',
     marginRight: 8,
+  },
+  dotOnline: {
+    backgroundColor: '#00C853',
+  },
+  dotOffline: {
+    backgroundColor: '#FFB300',
   },
   statusText: {
     fontSize: 12,
@@ -378,30 +397,10 @@ const styles = StyleSheet.create({
     height: 40,
     borderColor: '#FFFFFF',
   },
-  cornerTL: {
-    top: 0,
-    left: 0,
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
-  },
-  cornerTR: {
-    top: 0,
-    right: 0,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
-  },
-  cornerBL: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
-  },
-  cornerBR: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
-  },
+  cornerTL: { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4 },
+  cornerTR: { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4 },
+  cornerBL: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4 },
+  cornerBR: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4 },
   scanHint: {
     marginTop: 24,
     color: '#FFFFFF',
@@ -449,7 +448,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   lookupBtn: {
-    width: 56,
+    width: 80,
     height: 56,
     backgroundColor: '#0055FF',
     justifyContent: 'center',
@@ -460,7 +459,7 @@ const styles = StyleSheet.create({
   lookupBtnText: {
     color: '#FFFFFF',
     fontWeight: '900',
-    fontSize: 14,
+    fontSize: 13,
   },
   permissionBox: {
     flex: 1,
@@ -469,22 +468,20 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   permissionTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
     color: '#0F172A',
     marginTop: 16,
-    textAlign: 'center',
   },
   permissionText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#475569',
-    marginTop: 8,
-    textAlign: 'center',
+    marginTop: 6,
   },
   actionButton: {
-    marginTop: 24,
-    height: 64,
-    paddingHorizontal: 32,
+    marginTop: 20,
+    height: 56,
+    paddingHorizontal: 28,
     backgroundColor: '#0055FF',
     justifyContent: 'center',
     alignItems: 'center',
@@ -493,35 +490,25 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
     letterSpacing: 1,
   },
-  // Modal styles
-  modalOverlay: {
+  // Full screen result
+  resultFullScreen: {
+    flexGrow: 1,
+    padding: 20,
+  },
+  resultContent: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 2,
-    borderTopColor: '#000000',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    maxHeight: '85%',
-  },
-  resultContainer: {
-    flex: 0,
   },
   statusBanner: {
-    height: 96,
+    height: 88,
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   verifiedBanner: {
     backgroundColor: '#00C853',
@@ -530,7 +517,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF3B30',
   },
   bannerText: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -1,
@@ -539,22 +526,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#475569',
     textAlign: 'center',
-    paddingHorizontal: 24,
-    marginBottom: 24,
-  },
-  detailsScroll: {
-    maxHeight: 350,
+    lineHeight: 24,
+    marginTop: 16,
   },
   photoContainer: {
-    width: 100,
-    height: 100,
-    borderWidth: 2,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  photoPlaceholder: {
+    width: 90,
+    height: 90,
+    borderWidth: 3,
     borderColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
-    alignSelf: 'center',
-    marginBottom: 24,
+    backgroundColor: '#0055FF',
+  },
+  photoInitial: {
+    fontSize: 40,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  detailCard: {
+    borderWidth: 2,
+    borderColor: '#000000',
     backgroundColor: '#F8FAFC',
+    padding: 20,
   },
   detailRow: {
     marginBottom: 16,
@@ -563,7 +560,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   detailLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: '#64748B',
     letterSpacing: 2,
@@ -571,12 +568,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   detailValue: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '900',
     color: '#000000',
   },
   detailValueMono: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#475569',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
@@ -586,9 +583,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F172A',
     justifyContent: 'center',
     alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
     borderWidth: 2,
     borderColor: '#000000',
-    marginTop: 16,
+    marginTop: 20,
   },
   closeButtonText: {
     color: '#FFFFFF',

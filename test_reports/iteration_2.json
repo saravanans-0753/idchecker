@@ -1,0 +1,46 @@
+{
+  "summary": "Frontend re-test after bug fixes. ADMIN tab features working perfectly (IDs in blue, clickable entries, full detail view). CRITICAL BUG FOUND: SCAN tab resident count not refreshing after sync, causing manual lookup to fail. Data IS in AsyncStorage and ADMIN tab works, but SCAN tab doesn't reload count when navigating back from other tabs.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "SCAN tab - Manual lookup",
+        "issue": "CRITICAL: Resident count shows 0 even after successful sync. Manual lookup for RES001 does not show result screen. Root cause: useEffect in index.tsx only runs on mount, not when navigating back to tab. With Expo Router tabs, components stay mounted.",
+        "affected_testIDs": ["manual-id-input", "manual-lookup-btn"],
+        "priority": "CRITICAL"
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "FIX CRITICAL: SCAN tab (index.tsx) - Implement proper tab focus detection for Expo Router to reload resident count when tab becomes active",
+    "After fixing count refresh, verify manual lookup works correctly and shows full result screen with all details"
+  ],
+  "critical_code_review_comments": [
+    "✓ ADMIN tab working perfectly: Resident IDs shown in blue (rgb(0, 85, 255))",
+    "✓ ADMIN tab: Clicking resident entry opens full-screen detail view with BACK button",
+    "✓ ADMIN tab: Detail view shows all fields: RESIDENT ID (BARCODE), NAME, UNIT/FLAT, PHONE, VEHICLE PLATE, ADDED ON",
+    "✓ ADMIN tab: DELETE RESIDENT button present and visible",
+    "✓ SYNC tab: Pull Latest Data successfully syncs 7 residents",
+    "✗ CRITICAL: SCAN tab resident count not updating when navigating back from other tabs",
+    "✗ CRITICAL: Manual lookup not working because component thinks there's no data (count = 0)"
+  ],
+  "updated_files": [
+    "/app/frontend/app/index.tsx"
+  ],
+  "success_rate": {
+    "backend": "Not tested (already passing 10/10)",
+    "frontend": "60% (3/5 features working: SYNC ✓, ADMIN ✓, LOG ✓, SCAN count ✗, SCAN lookup ✗)"
+  },
+  "seed_data_creation": "Backend seeds 5 residents (RES001-RES005). AsyncStorage verified to contain 7 residents including RES001 with correct data.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "ADMIN tab bug fixes are working perfectly. However, SCAN tab has a critical issue: resident count doesn't refresh when navigating back to the tab. This is an Expo Router lifecycle issue - components stay mounted and useEffect doesn't re-run. The data IS in AsyncStorage (verified via browser console), but the SCAN tab's residentCount state is stale. Attempted fix using AppState.addEventListener didn't work for tab navigation. Need proper Expo Router focus detection or force component to reload count on every render.",
+  "rca_of_issue": "ROOT CAUSE: SCAN tab resident count not refreshing\n\nREPRODUCTION STEPS:\n1. Load app (SCAN tab shows '0 RESIDENTS IN LOCAL DB')\n2. Navigate to SYNC tab\n3. Click 'PULL LATEST DATA' (successfully syncs 7 residents)\n4. Navigate back to SCAN tab\n5. OBSERVE: Still shows '0 RESIDENTS IN LOCAL DB'\n6. Enter 'RES001' in manual lookup and click LOOK UP\n7. OBSERVE: No result screen shown\n\nROOT CAUSE ANALYSIS:\n- File: /app/frontend/app/index.tsx, lines 34-36\n- Code: useEffect(() => { loadResidentCount(); }, []);\n- Issue: Empty dependency array means effect only runs on component mount\n- With Expo Router's tab navigation, components stay mounted when switching tabs\n- When navigating SCAN → SYNC → SCAN, the SCAN component doesn't remount\n- Therefore, useEffect doesn't run again and residentCount stays at 0\n- The lookup function works correctly, but UI doesn't update because showResult state logic may also be affected\n\nVERIFICATION:\n- AsyncStorage DOES contain 7 residents (verified via browser console)\n- ADMIN tab successfully reads from same AsyncStorage and shows all residents\n- Backend API working correctly (sync returns 7 residents)\n\nATTEMPTED FIX:\n- Added AppState.addEventListener to detect app foreground/background\n- Added useEffect dependent on showResult to reload count\n- RESULT: Did not fix the issue - AppState doesn't fire for tab navigation\n\nRECOMMENDED FIX:\n- Use Expo Router's navigation events or screen focus detection\n- Alternative: Use a global state management solution (zustand/redux) to share resident count across tabs\n- Alternative: Force reload count on every render (performance concern)\n- Alternative: Use React Navigation's useFocusEffect if Expo Router supports it properly"
+}

@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getLocalResidents, saveLocalResidents, type Resident } from '../src/services/storage';
@@ -22,6 +23,7 @@ export default function AdminScreen() {
   const [residents, setResidents] = useState<Resident[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
   const [loading, setLoading] = useState(false);
 
   // Form state
@@ -29,6 +31,7 @@ export default function AdminScreen() {
   const [formUnit, setFormUnit] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formVehicle, setFormVehicle] = useState('');
+  const [formId, setFormId] = useState('');
 
   useEffect(() => {
     loadResidents();
@@ -59,7 +62,6 @@ export default function AdminScreen() {
         phone: formPhone.trim(),
         vehicle_plate: formVehicle.trim(),
       });
-      // Also save locally
       const current = await getLocalResidents();
       current.push(newResident);
       await saveLocalResidents(current);
@@ -67,9 +69,10 @@ export default function AdminScreen() {
       resetForm();
       setShowAddModal(false);
     } catch (error: any) {
-      // Save locally even if server is offline
+      // Offline - save locally with custom ID
+      const customId = formId.trim() || `LOCAL_${Date.now()}`;
       const newResident: Resident = {
-        id: `LOCAL_${Date.now()}`,
+        id: customId,
         name: formName.trim(),
         unit: formUnit.trim(),
         phone: formPhone.trim(),
@@ -85,7 +88,7 @@ export default function AdminScreen() {
       setResidents(current);
       resetForm();
       setShowAddModal(false);
-      Alert.alert('SAVED LOCALLY', 'Resident saved offline. Sync when online to upload.');
+      Alert.alert('SAVED LOCALLY', 'Resident saved offline. Sync when online.');
     } finally {
       setLoading(false);
     }
@@ -103,13 +106,12 @@ export default function AdminScreen() {
           onPress: async () => {
             try {
               await apiDeleteResident(resident.id);
-            } catch (_) {
-              // Offline - proceed with local delete
-            }
+            } catch (_) {}
             const current = await getLocalResidents();
             const updated = current.filter(r => r.id !== resident.id);
             await saveLocalResidents(updated);
             setResidents(updated);
+            setSelectedResident(null);
           },
         },
       ]
@@ -121,19 +123,23 @@ export default function AdminScreen() {
     setFormUnit('');
     setFormPhone('');
     setFormVehicle('');
+    setFormId('');
   };
 
   const renderResident = ({ item }: { item: Resident }) => (
-    <View testID={`admin-resident-${item.id}`} style={styles.residentItem}>
-      <View style={styles.residentIcon}>
-        <Ionicons name="person" size={24} color="#475569" />
+    <TouchableOpacity
+      testID={`admin-resident-${item.id}`}
+      style={styles.residentItem}
+      onPress={() => setSelectedResident(item)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.residentAvatar}>
+        <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
       </View>
       <View style={styles.residentInfo}>
         <Text style={styles.residentName}>{item.name}</Text>
+        <Text style={styles.residentId}>ID: {item.id}</Text>
         <Text style={styles.residentUnit}>{item.unit} • {item.phone}</Text>
-        {item.vehicle_plate ? (
-          <Text style={styles.residentVehicle}>{item.vehicle_plate}</Text>
-        ) : null}
       </View>
       <View style={styles.residentActions}>
         <View
@@ -146,19 +152,12 @@ export default function AdminScreen() {
             {item.status === 'active' ? 'ACTIVE' : 'INACTIVE'}
           </Text>
         </View>
-        <TouchableOpacity
-          testID={`delete-resident-${item.id}`}
-          onPress={() => handleDeleteResident(item)}
-          style={styles.deleteBtn}
-        >
-          <Ionicons name="trash-outline" size={20} color="#FF3B30" />
-        </TouchableOpacity>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
-    <View testID="admin-screen" style={styles.container}>
+    <SafeAreaView testID="admin-screen" style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -173,6 +172,14 @@ export default function AdminScreen() {
           <Ionicons name="add" size={24} color="#FFFFFF" />
           <Text style={styles.addButtonText}>ADD</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Info about ID format */}
+      <View style={styles.idFormatInfo}>
+        <Ionicons name="information-circle" size={16} color="#64748B" />
+        <Text style={styles.idFormatText}>
+          ID FORMAT: RES001, RES002... (encode this in the barcode)
+        </Text>
       </View>
 
       {/* Resident List */}
@@ -195,6 +202,92 @@ export default function AdminScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         />
+      )}
+
+      {/* Resident Detail Modal */}
+      {selectedResident && (
+        <Modal
+          visible={!!selectedResident}
+          animationType="slide"
+          transparent={false}
+          onRequestClose={() => setSelectedResident(null)}
+        >
+          <SafeAreaView style={styles.detailModalContainer}>
+            <View style={styles.detailHeader}>
+              <TouchableOpacity
+                testID="close-detail-modal"
+                onPress={() => setSelectedResident(null)}
+                style={styles.backBtn}
+              >
+                <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+                <Text style={styles.backBtnText}>BACK</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.detailContent}>
+              {/* Avatar */}
+              <View style={styles.detailAvatar}>
+                <Text style={styles.detailAvatarText}>
+                  {selectedResident.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+
+              {/* Status */}
+              <View
+                style={[
+                  styles.detailStatus,
+                  selectedResident.status === 'active' ? styles.badgeActive : styles.badgeInactive,
+                ]}
+              >
+                <Text style={styles.detailStatusText}>
+                  {selectedResident.status === 'active' ? 'ACTIVE' : 'INACTIVE'}
+                </Text>
+              </View>
+
+              {/* Details Card */}
+              <View style={styles.detailCard}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>RESIDENT ID (BARCODE)</Text>
+                  <Text testID="detail-resident-id" style={styles.detailValueMono}>{selectedResident.id}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>NAME</Text>
+                  <Text testID="detail-resident-name" style={styles.detailValue}>{selectedResident.name}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>UNIT / FLAT</Text>
+                  <Text style={styles.detailValue}>{selectedResident.unit}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>PHONE</Text>
+                  <Text style={styles.detailValue}>{selectedResident.phone}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>VEHICLE PLATE</Text>
+                  <Text style={styles.detailValue}>{selectedResident.vehicle_plate || 'N/A'}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>ADDED ON</Text>
+                  <Text style={styles.detailValueSmall}>
+                    {new Date(selectedResident.created_at).toLocaleDateString('en-IN', {
+                      day: '2-digit', month: 'short', year: 'numeric'
+                    })}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Delete Button */}
+              <TouchableOpacity
+                testID="detail-delete-btn"
+                style={styles.deleteButton}
+                onPress={() => handleDeleteResident(selectedResident)}
+              >
+                <Ionicons name="trash" size={20} color="#FFFFFF" />
+                <Text style={styles.deleteButtonText}>DELETE RESIDENT</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
       )}
 
       {/* Add Resident Modal */}
@@ -223,6 +316,17 @@ export default function AdminScreen() {
             </View>
 
             <ScrollView style={styles.formScroll}>
+              <Text style={styles.fieldLabel}>RESIDENT ID (FOR BARCODE)</Text>
+              <TextInput
+                testID="input-id"
+                style={styles.input}
+                value={formId}
+                onChangeText={setFormId}
+                placeholder="e.g. RES006"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="characters"
+              />
+
               <Text style={styles.fieldLabel}>NAME *</Text>
               <TextInput
                 testID="input-name"
@@ -280,7 +384,7 @@ export default function AdminScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -293,7 +397,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 24,
+    padding: 20,
+    paddingHorizontal: 24,
     borderBottomWidth: 2,
     borderBottomColor: '#000000',
   },
@@ -303,7 +408,7 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   headerLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: '#64748B',
     letterSpacing: 2,
@@ -323,6 +428,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
   },
+  idFormatInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  idFormatText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+    letterSpacing: 0.5,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -341,26 +462,29 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   listContent: {
-    padding: 16,
+    padding: 12,
   },
   residentItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 14,
     marginBottom: 8,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#E2E8F0',
     backgroundColor: '#FFFFFF',
   },
-  residentIcon: {
-    width: 44,
-    height: 44,
+  residentAvatar: {
+    width: 48,
+    height: 48,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    backgroundColor: '#0055FF',
     marginRight: 12,
+  },
+  avatarText: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#FFFFFF',
   },
   residentInfo: {
     flex: 1,
@@ -370,21 +494,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#000000',
   },
+  residentId: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0055FF',
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
   residentUnit: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#64748B',
     marginTop: 2,
   },
-  residentVehicle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#94A3B8',
-    marginTop: 2,
-  },
   residentActions: {
     alignItems: 'flex-end',
-    gap: 8,
   },
   statusBadge: {
     paddingHorizontal: 8,
@@ -402,10 +526,111 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     letterSpacing: 1,
   },
-  deleteBtn: {
-    padding: 4,
+  // Detail Modal
+  detailModalContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
-  // Modal
+  detailHeader: {
+    backgroundColor: '#0F172A',
+    padding: 16,
+    paddingHorizontal: 20,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  backBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  detailContent: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  detailAvatar: {
+    width: 100,
+    height: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0055FF',
+    borderWidth: 3,
+    borderColor: '#000000',
+    marginBottom: 16,
+  },
+  detailAvatarText: {
+    fontSize: 48,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  detailStatus: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    marginBottom: 24,
+  },
+  detailStatusText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
+  detailCard: {
+    width: '100%',
+    borderWidth: 2,
+    borderColor: '#000000',
+    backgroundColor: '#F8FAFC',
+    padding: 20,
+  },
+  detailRow: {
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingBottom: 12,
+  },
+  detailLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 2,
+    marginBottom: 4,
+  },
+  detailValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#000000',
+  },
+  detailValueMono: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0055FF',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  detailValueSmall: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  deleteButton: {
+    width: '100%',
+    height: 56,
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    borderWidth: 2,
+    borderColor: '#000000',
+    marginTop: 24,
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  // Add Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
@@ -418,16 +643,16 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    maxHeight: '80%',
+    maxHeight: '85%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
     color: '#000000',
   },
@@ -435,36 +660,36 @@ const styles = StyleSheet.create({
     maxHeight: 400,
   },
   fieldLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: '#64748B',
     letterSpacing: 2,
-    marginBottom: 8,
-    marginTop: 16,
+    marginBottom: 6,
+    marginTop: 14,
   },
   input: {
-    height: 56,
+    height: 52,
     borderWidth: 2,
     borderColor: '#E2E8F0',
     paddingHorizontal: 16,
-    fontSize: 18,
+    fontSize: 16,
     backgroundColor: '#FFFFFF',
   },
   saveButton: {
-    height: 64,
+    height: 60,
     backgroundColor: '#0055FF',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#000000',
-    marginTop: 24,
+    marginTop: 20,
   },
   saveButtonDisabled: {
     opacity: 0.7,
   },
   saveButtonText: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '900',
     letterSpacing: 1,
   },
