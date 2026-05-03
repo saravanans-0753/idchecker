@@ -166,6 +166,11 @@ export default function ScannerScreen() {
               )}
             </View>
 
+            {/* Resident Name */}
+            <View style={styles.nameBar}>
+              <Text testID="resident-name" style={styles.nameText}>{resident.name}</Text>
+            </View>
+
             {/* Single compact info bar */}
             <View style={styles.infoBar}>
               <View style={styles.infoItem}>
@@ -341,6 +346,8 @@ const styles = StyleSheet.create({
   photoImage: { width: '100%', height: '100%' },
   photoFullInitial: { fontSize: 200, fontWeight: '900', color: '#FFFFFF', opacity: 0.9 },
   photoName: { fontSize: 28, fontWeight: '900', color: '#FFFFFF', marginTop: -10 },
+  nameBar: { backgroundColor: '#FFFFFF', paddingVertical: 8, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  nameText: { fontSize: 22, fontWeight: '900', color: '#000000', textAlign: 'center' },
   infoBar: { flexDirection: 'row', backgroundColor: '#0F172A', paddingVertical: 10, paddingHorizontal: 12 },
   infoItem: { flex: 1, alignItems: 'center' },
   infoLabel: { fontSize: 9, fontWeight: '700', color: '#94A3B8', letterSpacing: 1 },
