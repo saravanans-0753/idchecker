@@ -4,11 +4,14 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import csv
+import io
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
+import httpx
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -29,7 +32,9 @@ class Resident(BaseModel):
     unit: str
     aadhar_masked: str = ""
     vehicle_plate: Optional[str] = ""
+    photo_url: Optional[str] = ""
     photo_base64: Optional[str] = ""
+    validity: Optional[str] = ""
     status: str = "active"
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -41,7 +46,9 @@ class ResidentCreate(BaseModel):
     unit: str
     aadhar_masked: str = ""
     vehicle_plate: Optional[str] = ""
+    photo_url: Optional[str] = ""
     photo_base64: Optional[str] = ""
+    validity: Optional[str] = ""
     status: str = "active"
 
 
@@ -50,7 +57,9 @@ class ResidentUpdate(BaseModel):
     unit: Optional[str] = None
     aadhar_masked: Optional[str] = None
     vehicle_plate: Optional[str] = None
+    photo_url: Optional[str] = None
     photo_base64: Optional[str] = None
+    validity: Optional[str] = None
     status: Optional[str] = None
 
 
@@ -70,6 +79,10 @@ class AccessLogCreate(BaseModel):
     status: str = "verified"
 
 
+class SheetImportRequest(BaseModel):
+    sheet_url: str
+
+
 # Seed data
 SEED_RESIDENTS = [
     {
@@ -78,7 +91,9 @@ SEED_RESIDENTS = [
         "unit": "A-101",
         "aadhar_masked": "XXXX-XXXX-4523",
         "vehicle_plate": "KA 01 AB 1234",
+        "photo_url": "",
         "photo_base64": "",
+        "validity": "2024-2026",
         "status": "active",
         "created_at": "2024-01-15T10:00:00Z",
         "updated_at": "2024-01-15T10:00:00Z"
@@ -89,7 +104,9 @@ SEED_RESIDENTS = [
         "unit": "B-205",
         "aadhar_masked": "XXXX-XXXX-7891",
         "vehicle_plate": "KA 02 CD 5678",
+        "photo_url": "",
         "photo_base64": "",
+        "validity": "2024-2026",
         "status": "active",
         "created_at": "2024-02-10T10:00:00Z",
         "updated_at": "2024-02-10T10:00:00Z"
@@ -100,7 +117,9 @@ SEED_RESIDENTS = [
         "unit": "C-302",
         "aadhar_masked": "XXXX-XXXX-3456",
         "vehicle_plate": "KA 03 EF 9012",
+        "photo_url": "",
         "photo_base64": "",
+        "validity": "2024-2026",
         "status": "active",
         "created_at": "2024-03-05T10:00:00Z",
         "updated_at": "2024-03-05T10:00:00Z"
@@ -111,7 +130,9 @@ SEED_RESIDENTS = [
         "unit": "A-404",
         "aadhar_masked": "XXXX-XXXX-6789",
         "vehicle_plate": "",
+        "photo_url": "",
         "photo_base64": "",
+        "validity": "2025-2027",
         "status": "active",
         "created_at": "2024-04-20T10:00:00Z",
         "updated_at": "2024-04-20T10:00:00Z"
@@ -122,7 +143,9 @@ SEED_RESIDENTS = [
         "unit": "D-102",
         "aadhar_masked": "XXXX-XXXX-1234",
         "vehicle_plate": "KA 05 GH 3456",
+        "photo_url": "",
         "photo_base64": "",
+        "validity": "2023-2025",
         "status": "inactive",
         "created_at": "2024-05-12T10:00:00Z",
         "updated_at": "2024-05-12T10:00:00Z"
@@ -132,7 +155,6 @@ SEED_RESIDENTS = [
 
 @app.on_event("startup")
 async def seed_database():
-    """Seed the database with sample residents if empty."""
     count = await db.residents.count_documents({})
     if count == 0:
         for resident in SEED_RESIDENTS:
@@ -162,7 +184,6 @@ async def create_resident(data: ResidentCreate):
         resident_dict["id"] = f"RES{str(uuid.uuid4())[:6].upper()}"
     resident_dict["created_at"] = datetime.now(timezone.utc).isoformat()
     resident_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
-    # Upsert - if id exists, update; otherwise insert
     await db.residents.update_one(
         {"id": resident_dict["id"]},
         {"$set": resident_dict},
@@ -177,10 +198,8 @@ async def update_resident(resident_id: str, data: ResidentUpdate):
     existing = await db.residents.find_one({"id": resident_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Resident not found")
-
     update_data = {k: v for k, v in data.dict().items() if v is not None}
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-
     await db.residents.update_one({"id": resident_id}, {"$set": update_data})
     updated = await db.residents.find_one({"id": resident_id}, {"_id": 0})
     return updated
@@ -192,6 +211,91 @@ async def delete_resident(resident_id: str):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Resident not found")
     return {"message": "Resident deleted", "id": resident_id}
+
+
+# Import from Google Sheet (published as CSV)
+@api_router.post("/import-sheet")
+async def import_from_sheet(data: SheetImportRequest):
+    """
+    Import residents from a published Google Sheet.
+    The sheet_url should be the published CSV URL, e.g.:
+    https://docs.google.com/spreadsheets/d/e/XXXXX/pub?output=csv
+    
+    Or provide the pubhtml URL and we'll convert it automatically.
+    Expected columns: ID, Name, Flat, Aadhar, Photo URL, Validity
+    """
+    sheet_url = data.sheet_url.strip()
+    
+    # Convert pubhtml URL to CSV URL if needed
+    if "pubhtml" in sheet_url:
+        sheet_url = sheet_url.replace("pubhtml", "pub?output=csv")
+    elif "/pub?" not in sheet_url and "pub?output=csv" not in sheet_url:
+        # Try to make it a CSV export URL
+        if sheet_url.endswith("/"):
+            sheet_url = sheet_url[:-1]
+        sheet_url = sheet_url + "?output=csv" if "?" not in sheet_url else sheet_url + "&output=csv"
+    elif "output=csv" not in sheet_url:
+        sheet_url = sheet_url + "&output=csv" if "?" in sheet_url else sheet_url + "?output=csv"
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client_http:
+            response = await client_http.get(sheet_url)
+            response.raise_for_status()
+            csv_content = response.text
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch sheet: {str(e)}")
+
+    # Parse CSV
+    reader = csv.DictReader(io.StringIO(csv_content))
+    imported_count = 0
+    errors = []
+
+    for row_num, row in enumerate(reader, start=2):
+        try:
+            # Map columns (flexible matching)
+            resident_id = (row.get("ID") or row.get("id") or row.get("Id") or "").strip()
+            name = (row.get("Name") or row.get("name") or row.get("NAME") or "").strip()
+            flat = (row.get("Flat") or row.get("flat") or row.get("FLAT") or row.get("Unit") or "").strip()
+            aadhar = (row.get("Aadhar") or row.get("aadhar") or row.get("AADHAR") or row.get("Aadhar Number") or "").strip()
+            photo_url = (row.get("Photo URL") or row.get("photo_url") or row.get("Photo") or row.get("photo") or "").strip()
+            validity = (row.get("Validity") or row.get("validity") or row.get("VALIDITY") or "").strip()
+            vehicle = (row.get("Vehicle") or row.get("vehicle") or row.get("Vehicle Plate") or row.get("vehicle_plate") or "").strip()
+
+            if not resident_id or not name:
+                continue  # Skip empty rows
+
+            resident_data = {
+                "id": resident_id,
+                "name": name,
+                "unit": flat,
+                "aadhar_masked": aadhar,
+                "photo_url": photo_url,
+                "photo_base64": "",
+                "vehicle_plate": vehicle,
+                "validity": validity,
+                "status": "active",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+            # Upsert - update if exists, insert if new
+            existing = await db.residents.find_one({"id": resident_id})
+            if existing:
+                resident_data.pop("status", None)  # Don't overwrite status on update
+                await db.residents.update_one({"id": resident_id}, {"$set": resident_data})
+            else:
+                resident_data["created_at"] = datetime.now(timezone.utc).isoformat()
+                await db.residents.insert_one(resident_data)
+            
+            imported_count += 1
+        except Exception as e:
+            errors.append(f"Row {row_num}: {str(e)}")
+
+    return {
+        "message": f"Imported {imported_count} residents from sheet",
+        "imported": imported_count,
+        "errors": errors,
+        "synced_at": datetime.now(timezone.utc).isoformat()
+    }
 
 
 # Access logs endpoints
@@ -218,6 +322,23 @@ async def sync_residents():
         "synced_at": datetime.now(timezone.utc).isoformat(),
         "count": len(residents)
     }
+
+
+# Get/Set sheet URL config
+@api_router.get("/config/sheet-url")
+async def get_sheet_url():
+    config = await db.app_config.find_one({"key": "sheet_url"}, {"_id": 0})
+    return {"sheet_url": config.get("value", "") if config else ""}
+
+
+@api_router.post("/config/sheet-url")
+async def set_sheet_url(data: SheetImportRequest):
+    await db.app_config.update_one(
+        {"key": "sheet_url"},
+        {"$set": {"key": "sheet_url", "value": data.sheet_url.strip()}},
+        upsert=True
+    )
+    return {"message": "Sheet URL saved", "sheet_url": data.sheet_url.strip()}
 
 
 @api_router.get("/")

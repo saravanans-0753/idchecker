@@ -10,7 +10,9 @@ export interface Resident {
   unit: string;
   aadhar_masked: string;
   vehicle_plate: string;
+  photo_url: string;
   photo_base64: string;
+  validity: string;
   status: string;
   created_at: string;
   updated_at: string;

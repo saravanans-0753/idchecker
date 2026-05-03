@@ -1,11 +1,5 @@
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
-export async function fetchAllResidents() {
-  const res = await fetch(`${BACKEND_URL}/api/residents`);
-  if (!res.ok) throw new Error('Failed to fetch residents');
-  return res.json();
-}
-
 export async function syncResidents() {
   const res = await fetch(`${BACKEND_URL}/api/sync`);
   if (!res.ok) throw new Error('Sync failed');
@@ -48,5 +42,32 @@ export async function deleteResident(id: string) {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error('Failed to delete resident');
+  return res.json();
+}
+
+export async function importFromSheet(sheetUrl: string) {
+  const res = await fetch(`${BACKEND_URL}/api/import-sheet`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sheet_url: sheetUrl }),
+  });
+  if (!res.ok) throw new Error('Failed to import from sheet');
+  return res.json();
+}
+
+export async function getSheetUrl(): Promise<string> {
+  const res = await fetch(`${BACKEND_URL}/api/config/sheet-url`);
+  if (!res.ok) return '';
+  const data = await res.json();
+  return data.sheet_url || '';
+}
+
+export async function saveSheetUrl(sheetUrl: string) {
+  const res = await fetch(`${BACKEND_URL}/api/config/sheet-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sheet_url: sheetUrl }),
+  });
+  if (!res.ok) throw new Error('Failed to save sheet URL');
   return res.json();
 }
