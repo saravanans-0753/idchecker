@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { getLocalResidents, saveLocalResidents, getLastSyncTime, setLastSyncTime } from '../src/services/storage';
 import { syncResidents, importFromSheet, getSheetUrl, saveSheetUrl } from '../src/services/api';
+import { downloadAllPhotos } from '../src/services/photos';
 
 export default function SyncScreen() {
   const [syncing, setSyncing] = useState(false);
@@ -51,11 +52,18 @@ export default function SyncScreen() {
       
       // Step 2: Sync all data from server to local
       const data = await syncResidents();
-      await saveLocalResidents(data.residents);
+      
+      // Step 3: Download photos to local file system
+      setSyncResult(`Imported ${importResult.imported} residents. Downloading photos...`);
+      const residentsWithPhotos = await downloadAllPhotos(data.residents, (done, total) => {
+        setSyncResult(`Downloading photos: ${done}/${total}`);
+      });
+      
+      await saveLocalResidents(residentsWithPhotos);
       await setLastSyncTime(data.synced_at);
-      setLocalCount(data.count);
+      setLocalCount(residentsWithPhotos.length);
       setLastSync(data.synced_at);
-      setSyncResult(`Imported ${importResult.imported} residents from sheet`);
+      setSyncResult(`Done! ${importResult.imported} residents imported, photos saved locally`);
     } catch (error: any) {
       setSyncError('IMPORT FAILED - Check sheet URL & internet');
     } finally {

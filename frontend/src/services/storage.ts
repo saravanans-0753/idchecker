@@ -12,6 +12,7 @@ export interface Resident {
   vehicle_plate: string;
   photo_url: string;
   photo_base64: string;
+  local_photo: string;
   validity: string;
   status: string;
   created_at: string;
