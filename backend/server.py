@@ -264,13 +264,27 @@ async def import_from_sheet(data: SheetImportRequest):
             if not resident_id or not name:
                 continue  # Skip empty rows
 
+            # Download photo and convert to base64
+            photo_base64 = ""
+            if photo_url:
+                try:
+                    async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as img_client:
+                        img_response = await img_client.get(photo_url)
+                        if img_response.status_code == 200:
+                            import base64
+                            content_type = img_response.headers.get("content-type", "image/jpeg")
+                            img_b64 = base64.b64encode(img_response.content).decode("utf-8")
+                            photo_base64 = f"data:{content_type};base64,{img_b64}"
+                except Exception as img_err:
+                    errors.append(f"Row {row_num}: Photo download failed - {str(img_err)}")
+
             resident_data = {
                 "id": resident_id,
                 "name": name,
                 "unit": flat,
                 "aadhar_masked": aadhar,
                 "photo_url": photo_url,
-                "photo_base64": "",
+                "photo_base64": photo_base64,
                 "vehicle_plate": vehicle,
                 "validity": validity,
                 "status": "active",
@@ -281,6 +295,9 @@ async def import_from_sheet(data: SheetImportRequest):
             existing = await db.residents.find_one({"id": resident_id})
             if existing:
                 resident_data.pop("status", None)  # Don't overwrite status on update
+                # Only update photo if new one was downloaded
+                if not photo_base64:
+                    resident_data.pop("photo_base64", None)
                 await db.residents.update_one({"id": resident_id}, {"$set": resident_data})
             else:
                 resident_data["created_at"] = datetime.now(timezone.utc).isoformat()

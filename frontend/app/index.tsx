@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
   AppState,
+  Image,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -148,10 +149,21 @@ export default function ScannerScreen() {
 
             {/* FULL SCREEN PORTRAIT PHOTO - takes all remaining space */}
             <View style={styles.photoFull}>
-              <Text style={styles.photoFullInitial}>
-                {resident.name.charAt(0).toUpperCase()}
-              </Text>
-              <Text style={styles.photoName}>{resident.name}</Text>
+              {resident.photo_base64 ? (
+                <Image
+                  testID="resident-photo"
+                  source={{ uri: resident.photo_base64 }}
+                  style={styles.photoImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <>
+                  <Text style={styles.photoFullInitial}>
+                    {resident.name.charAt(0).toUpperCase()}
+                  </Text>
+                  <Text style={styles.photoName}>{resident.name}</Text>
+                </>
+              )}
             </View>
 
             {/* Single compact info bar */}
@@ -326,6 +338,7 @@ const styles = StyleSheet.create({
   bannerText: { fontSize: 24, fontWeight: '900', color: '#FFFFFF' },
   notFoundText: { fontSize: 16, color: '#475569', textAlign: 'center', lineHeight: 24 },
   photoFull: { flex: 1, width: '100%', backgroundColor: '#0055FF', justifyContent: 'center', alignItems: 'center' },
+  photoImage: { width: '100%', height: '100%' },
   photoFullInitial: { fontSize: 200, fontWeight: '900', color: '#FFFFFF', opacity: 0.9 },
   photoName: { fontSize: 28, fontWeight: '900', color: '#FFFFFF', marginTop: -10 },
   infoBar: { flexDirection: 'row', backgroundColor: '#0F172A', paddingVertical: 10, paddingHorizontal: 12 },
