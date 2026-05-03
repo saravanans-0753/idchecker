@@ -9,10 +9,10 @@ import {
   Platform,
   ActivityIndicator,
   SafeAreaView,
-  AppState,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   getResidentById,
   getLocalResidents,
@@ -32,32 +32,31 @@ export default function ScannerScreen() {
   const [loading, setLoading] = useState(false);
   const [residentCount, setResidentCount] = useState(0);
 
-  // Load resident count on mount and when app state changes
+  // Reload resident count every time this tab gains focus
+  useFocusEffect(
+    useCallback(() => {
+      loadResidentCount();
+    }, [])
+  );
+  
+  // Also reload count when returning from result screen  
   useEffect(() => {
     loadResidentCount();
-    
-    // Reload count when app comes to foreground or component becomes visible
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active') {
-        loadResidentCount();
-      }
-    });
-    
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-  
-  // Also reload count when returning from result screen
-  useEffect(() => {
-    if (!showResult) {
-      loadResidentCount();
-    }
   }, [showResult]);
 
   const loadResidentCount = async () => {
     const residents = await getLocalResidents();
     setResidentCount(residents.length);
+  };
+
+  const handleManualLookup = async () => {
+    if (!manualId.trim()) return;
+    setLoading(true);
+    // Always reload count before lookup to ensure fresh data
+    await loadResidentCount();
+    await lookupResident(manualId.trim());
+    setLoading(false);
+    setManualId('');
   };
 
   const handleBarCodeScanned = useCallback(async ({ data }: { data: string }) => {
@@ -95,14 +94,6 @@ export default function ScannerScreen() {
       setNotFound(true);
     }
     setShowResult(true);
-  };
-
-  const handleManualLookup = async () => {
-    if (!manualId.trim()) return;
-    setLoading(true);
-    await lookupResident(manualId.trim());
-    setLoading(false);
-    setManualId('');
   };
 
   const resetScan = () => {
