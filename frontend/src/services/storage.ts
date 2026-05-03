@@ -46,7 +46,8 @@ export async function saveLocalResidents(residents: Resident[]): Promise<void> {
 
 export async function getResidentById(id: string): Promise<Resident | null> {
   const residents = await getLocalResidents();
-  return residents.find(r => r.id === id) || null;
+  const searchId = id.toLowerCase();
+  return residents.find(r => r.id.toLowerCase() === searchId) || null;
 }
 
 export async function deleteLocalResident(id: string): Promise<void> {
