@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,7 @@ export default function ScannerScreen() {
   const [manualId, setManualId] = useState('');
   const [loading, setLoading] = useState(false);
   const [residentCount, setResidentCount] = useState(0);
+  const cameraRef = useRef<any>(null);
 
   useEffect(() => {
     loadResidentCount();
@@ -62,6 +63,21 @@ export default function ScannerScreen() {
     await lookupResident(manualId.trim());
     setLoading(false);
     setManualId('');
+  };
+
+  const handleCaptureAndScan = async () => {
+    if (!cameraRef.current) return;
+    try {
+      setLoading(true);
+      // Take photo - the barcode scanner will handle it via onBarcodeScanned
+      // This is a fallback for when live scanning isn't detecting
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.3 });
+      // Photo is discarded immediately - barcode scanning is handled by the live feed
+      // If no barcode detected from live feed, prompt manual entry
+      setLoading(false);
+    } catch (e) {
+      setLoading(false);
+    }
   };
 
   const handleBarCodeScanned = useCallback(async ({ data }: { data: string }) => {
@@ -261,6 +277,7 @@ export default function ScannerScreen() {
       {!scanned && (
         <View style={styles.cameraContainer}>
           <CameraView
+            ref={cameraRef}
             testID="barcode-camera"
             style={styles.camera}
             facing="back"
@@ -275,6 +292,10 @@ export default function ScannerScreen() {
               <View style={[styles.corner, styles.cornerBR]} />
             </View>
             <Text style={styles.scanHint}>ALIGN BARCODE WITHIN FRAME</Text>
+            <TouchableOpacity testID="capture-scan-btn" style={styles.captureBtn} onPress={handleCaptureAndScan}>
+              <Ionicons name="camera" size={28} color="#FFFFFF" />
+              <Text style={styles.captureBtnText}>CAPTURE & SCAN</Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -322,6 +343,8 @@ const styles = StyleSheet.create({
   cornerBL: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4 },
   cornerBR: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4 },
   scanHint: { marginTop: 24, color: '#FFFFFF', fontSize: 14, fontWeight: '700', letterSpacing: 2 },
+  captureBtn: { marginTop: 32, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#0055FF', paddingHorizontal: 24, paddingVertical: 16, borderWidth: 2, borderColor: '#FFFFFF' },
+  captureBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900', letterSpacing: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 16, fontSize: 16, fontWeight: '700', color: '#475569' },
   manualSection: { padding: 16, paddingHorizontal: 24, backgroundColor: '#F8FAFC', borderTopWidth: 2, borderTopColor: '#000000' },

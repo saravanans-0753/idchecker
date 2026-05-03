@@ -7,8 +7,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { getLocalResidents, saveLocalResidents, getLastSyncTime, setLastSyncTime } from '../src/services/storage';
 import { syncResidents, importFromSheet, getSheetUrl, saveSheetUrl } from '../src/services/api';
 import { downloadAllPhotos } from '../src/services/photos';
+import PasswordLock from '../src/components/PasswordLock';
 
 export default function SyncScreen() {
+  const [unlocked, setUnlocked] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [localCount, setLocalCount] = useState(0);
@@ -17,7 +19,7 @@ export default function SyncScreen() {
   const [sheetUrl, setSheetUrl] = useState('');
   const [sheetSaved, setSheetSaved] = useState(false);
 
-  useEffect(() => { loadStatus(); }, []);
+  useEffect(() => { if (unlocked) loadStatus(); }, [unlocked]);
 
   const loadStatus = async () => {
     const residents = await getLocalResidents();
@@ -93,6 +95,10 @@ export default function SyncScreen() {
     const d = new Date(iso);
     return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
+
+  if (!unlocked) {
+    return <PasswordLock title="SYNC ACCESS" onUnlock={() => setUnlocked(true)} />;
+  }
 
   return (
     <SafeAreaView testID="sync-screen" style={styles.container}>
