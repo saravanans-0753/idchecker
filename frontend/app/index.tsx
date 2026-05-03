@@ -9,10 +9,10 @@ import {
   Platform,
   ActivityIndicator,
   SafeAreaView,
+  AppState,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
 import {
   getResidentById,
   getLocalResidents,
@@ -32,16 +32,24 @@ export default function ScannerScreen() {
   const [loading, setLoading] = useState(false);
   const [residentCount, setResidentCount] = useState(0);
 
-  // Reload resident count every time this tab gains focus
-  useFocusEffect(
-    useCallback(() => {
-      loadResidentCount();
-    }, [])
-  );
-  
-  // Also reload count when returning from result screen  
+  // Load count on mount and periodically check for updates
   useEffect(() => {
     loadResidentCount();
+    const interval = setInterval(loadResidentCount, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Reload when app comes to foreground
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') loadResidentCount();
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Reload when result screen closes
+  useEffect(() => {
+    if (!showResult) loadResidentCount();
   }, [showResult]);
 
   const loadResidentCount = async () => {
