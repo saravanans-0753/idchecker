@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput,
   Modal, ScrollView, Alert, RefreshControl, ActivityIndicator,
-  KeyboardAvoidingView, Platform, SafeAreaView,
+  KeyboardAvoidingView, Platform, SafeAreaView, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getLocalResidents, saveLocalResidents, deleteLocalResident, type Resident } from '../src/services/storage';
@@ -84,7 +84,11 @@ export default function AdminScreen() {
   const renderResident = ({ item }: { item: Resident }) => (
     <TouchableOpacity testID={`admin-resident-${item.id}`} style={styles.residentItem} onPress={() => setSelectedResident(item)} activeOpacity={0.7}>
       <View style={styles.residentAvatar}>
-        <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
+        {(item.local_photo || item.photo_url) ? (
+          <Image source={{ uri: item.local_photo || item.photo_url }} style={styles.avatarImage} />
+        ) : (
+          <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
+        )}
       </View>
       <View style={styles.residentInfo}>
         <Text style={styles.residentName}>{item.name}</Text>
@@ -137,7 +141,11 @@ export default function AdminScreen() {
             </View>
             <ScrollView contentContainerStyle={styles.detailContent}>
               <View style={styles.detailPhoto}>
-                <Text style={styles.detailPhotoText}>{selectedResident.name.charAt(0).toUpperCase()}</Text>
+                {(selectedResident.local_photo || selectedResident.photo_url) ? (
+                  <Image source={{ uri: selectedResident.local_photo || selectedResident.photo_url }} style={styles.detailPhotoImg} />
+                ) : (
+                  <Text style={styles.detailPhotoText}>{selectedResident.name.charAt(0).toUpperCase()}</Text>
+                )}
               </View>
               <View style={[styles.detailStatusBadge, selectedResident.status === 'active' ? styles.badgeActive : styles.badgeInactive]}>
                 <Text style={styles.statusBadgeText}>{selectedResident.status === 'active' ? 'ACTIVE' : 'INACTIVE'}</Text>
@@ -204,7 +212,8 @@ const styles = StyleSheet.create({
   emptySubtext: { fontSize: 14, color: '#94A3B8', marginTop: 8 },
   listContent: { padding: 12 },
   residentItem: { flexDirection: 'row', alignItems: 'center', padding: 14, marginBottom: 8, borderWidth: 2, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF' },
-  residentAvatar: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0055FF', marginRight: 12 },
+  residentAvatar: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0055FF', marginRight: 12, overflow: 'hidden' },
+  avatarImage: { width: 48, height: 48 },
   avatarText: { fontSize: 22, fontWeight: '900', color: '#FFFFFF' },
   residentInfo: { flex: 1 },
   residentName: { fontSize: 16, fontWeight: '800', color: '#000000' },
@@ -220,7 +229,8 @@ const styles = StyleSheet.create({
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   backBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   detailContent: { padding: 24, alignItems: 'center' },
-  detailPhoto: { width: 140, height: 140, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0055FF', borderWidth: 3, borderColor: '#000000', marginBottom: 16 },
+  detailPhoto: { width: 140, height: 140, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0055FF', borderWidth: 3, borderColor: '#000000', marginBottom: 16, overflow: 'hidden' },
+  detailPhotoImg: { width: 140, height: 140 },
   detailPhotoText: { fontSize: 64, fontWeight: '900', color: '#FFFFFF' },
   detailStatusBadge: { paddingHorizontal: 16, paddingVertical: 6, marginBottom: 20 },
   detailCard: { width: '100%', borderWidth: 2, borderColor: '#000000', backgroundColor: '#F8FAFC', padding: 16 },

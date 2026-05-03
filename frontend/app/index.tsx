@@ -149,17 +149,10 @@ export default function ScannerScreen() {
 
             {/* FULL SCREEN PORTRAIT PHOTO - takes all remaining space */}
             <View style={styles.photoFull}>
-              {resident.local_photo ? (
+              {(resident.local_photo || resident.photo_url || resident.photo_base64) ? (
                 <Image
                   testID="resident-photo"
-                  source={{ uri: resident.local_photo }}
-                  style={styles.photoImage}
-                  resizeMode="cover"
-                />
-              ) : resident.photo_base64 ? (
-                <Image
-                  testID="resident-photo"
-                  source={{ uri: resident.photo_base64 }}
+                  source={{ uri: resident.local_photo || resident.photo_url || resident.photo_base64 }}
                   style={styles.photoImage}
                   resizeMode="cover"
                 />
