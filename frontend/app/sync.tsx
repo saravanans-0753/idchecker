@@ -149,10 +149,6 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: '#F8FAFC',
     marginBottom: 32,
-    shadowColor: '#000000',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
     elevation: 8,
   },
   statusRow: {
@@ -189,10 +185,6 @@ const styles = StyleSheet.create({
     gap: 12,
     borderWidth: 2,
     borderColor: '#000000',
-    shadowColor: '#000000',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
     elevation: 8,
   },
   syncButtonDisabled: {
