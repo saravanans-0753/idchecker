@@ -1,0 +1,111 @@
+{
+  "theme_and_archetype": {
+    "theme": "Light",
+    "archetype": "Archetype 4 (Swiss & High-Contrast)",
+    "rationale": "For an outdoor security gate app used by guards, instant readability under direct sunlight is critical. We use stark black-and-white structures with pure signal colors (Red/Green/Blue) for instant status recognition."
+  },
+  "typography": {
+    "rules": "Radical weight contrast. Use ultra-heavy weights for status/alerts, and clean sans for data fields.",
+    "fonts": {
+      "heading": "System default (sans-serif), weight '900' (Black)",
+      "body": "System default (sans-serif), weight '400' (Regular)",
+      "mono": "Platform default monospace"
+    },
+    "hierarchy": {
+      "status_banner": "fontSize 48, fontWeight '900', textTransform 'uppercase', letterSpacing -1",
+      "h1": "fontSize 36, fontWeight 'bold', letterSpacing -0.5",
+      "h2": "fontSize 24, fontWeight 'bold'",
+      "body_large": "fontSize 18, fontWeight '500'",
+      "body": "fontSize 16, fontWeight 'normal'",
+      "label_overline": "fontSize 12, fontWeight 'bold', textTransform 'uppercase', letterSpacing 2, color '#64748B'",
+      "data_value": "fontSize 24, fontWeight '900'"
+    }
+  },
+  "colors": {
+    "background": {
+      "default": "#FFFFFF",
+      "surface": "#F8FAFC",
+      "dark_surface": "#0F172A"
+    },
+    "text": {
+      "primary": "#000000",
+      "secondary": "#475569",
+      "inverse": "#FFFFFF"
+    },
+    "border": {
+      "default": "#E2E8F0",
+      "strong": "#000000"
+    },
+    "signals": {
+      "success_bg": "#00C853",
+      "success_text": "#FFFFFF",
+      "error_bg": "#FF3B30",
+      "error_text": "#FFFFFF",
+      "action_bg": "#0055FF",
+      "action_text": "#FFFFFF",
+      "offline_warning": "#FFB300"
+    }
+  },
+  "spacing_and_layout": {
+    "system": "Dense but massive touch targets for gloved/fast hands.",
+    "container": "flex: 1, backgroundColor: '#FFFFFF'",
+    "touch_targets": "Minimum button height: 64px. Form inputs: 56px.",
+    "padding": "Generous horizontal padding: 24px."
+  },
+  "surface_strategies": {
+    "cards": "Flat solid surfaces. borderRadius: 0. borderWidth: 2, borderColor: '#000000'. shadowColor: '#000000', shadowOffset: { width: 4, height: 4 }, shadowOpacity: 1, shadowRadius: 0, elevation: 8 (to mimic hard physical buttons).",
+    "bottom_sheet": "For resident details post-scan: backgroundColor: '#FFFFFF', borderTopWidth: 2, borderTopColor: '#000000', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24.",
+    "navigation": "Top header should be pure black (backgroundColor: '#0F172A') with white text to visually anchor the app like a physical device bezel."
+  },
+  "components": {
+    "button": "height: 64, borderWidth: 2, borderColor: '#000000', backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center'. Text should be uppercase and bold.",
+    "input": "height: 56, borderWidth: 2, borderColor: '#E2E8F0', paddingHorizontal: 16, fontSize: 18",
+    "scanner_viewfinder": "A massive 1:1 aspect ratio block in the center. Use a semi-transparent black overlay with a transparent square cutout. Add 4px border brackets to guide the barcode.",
+    "status_indicator": "Full width block. Height 96px, justifyContent: 'center', alignItems: 'center'. E.g., 'VERIFIED' in Green or 'DENIED' in Red."
+  },
+  "media": {
+    "icons": {
+      "library": "@expo/vector-icons (Ionicons or MaterialIcons)",
+      "style": "Bold, filled weights for instant recognition."
+    },
+    "images": [
+      {
+        "category": "app_logo",
+        "description": "Minimalist brutalist app logo icon for a security gate scanner app",
+        "url": "https://static.prod-images.emergentagent.com/jobs/c20a39f9-e624-49a3-a2d3-0b616f1d979d/images/f69bbc6f4614964b72f1f1a2f1ac37a2151354cdc8f56b8c84a942d2badeec57.png"
+      },
+      {
+        "category": "offline_sync_illustration",
+        "description": "Wireframe illustration of server syncing, used in Sync screen or offline state",
+        "url": "https://static.prod-images.emergentagent.com/jobs/c20a39f9-e624-49a3-a2d3-0b616f1d979d/images/682c2698f9792c5d354969cada0da467780595e1b630372efe7b79b16144531c.png"
+      },
+      {
+        "category": "resident_avatar_placeholder_1",
+        "description": "Man in black hoodie (Mock data)",
+        "url": "https://images.unsplash.com/photo-1672685667592-0392f458f46f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdCUyMGhlYWRzaG90fGVufDB8fHx8MTc3NzgxNDM3Nnww&ixlib=rb-4.1.0&q=85"
+      },
+      {
+        "category": "resident_avatar_placeholder_2",
+        "description": "Woman in black sweatshirt (Mock data)",
+        "url": "https://images.unsplash.com/photo-1769636929388-99eff95d3bf1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdCUyMGhlYWRzaG90fGVufDB8fHx8MTc3NzgxNDM3Nnww&ixlib=rb-4.1.0&q=85"
+      },
+      {
+        "category": "building_background",
+        "description": "Modern apartment building exterior (For Login/Welcome screen background if needed)",
+        "url": "https://images.unsplash.com/photo-1559329146-807aff9ff1fb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODR8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBhcGFydG1lbnQlMjBidWlsZGluZyUyMGFyY2hpdGVjdHVyZSUyMGV4dGVyaW9yfGVufDB8fHx8MTc3NzgxNDM3Nnww&ixlib=rb-4.1.0&q=85"
+      }
+    ]
+  },
+  "motion_and_interactions": {
+    "animations": "Extremely fast. No slow fades.",
+    "feedback": "Use expo-haptics (Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)) on button presses and scan success/fail for critical physical feedback."
+  },
+  "instructions_to_main_agent": [
+    "TECH STACK VALIDATION: This is an EXPO React Native app (verified in package.json). You MUST use React Native primitives (View, Text, TouchableOpacity, StyleSheet) and NOT DOM elements (div, span) or Tailwind classes unless you manually install NativeWind. Given the current setup, use standard React Native StyleSheet objects mapped to the rules above.",
+    "For the Barcode Scanner: Use `expo-camera` or `expo-barcode-scanner`. If there are issues rendering the camera on the web simulator, explicitly add a 'Mock Scan' button for testing resident ID retrieval.",
+    "Offline-first Database: Utilize `AsyncStorage` (or expo-sqlite if you choose to install it) to keep the local copy of the residents. The 'Sync' action pulls down JSON from the FastAPI backend and overwrites the local storage.",
+    "For Data Models: Residents should have id, name, unit/flat number, phone, vehicle plate, and photo_url.",
+    "All interactive elements MUST include `testID` attributes (e.g., `testID='sync-button'`).",
+    "No soft, modern rounded corners. Everything must feel like a hard, utilitarian tactical device: 0px or 2px border radius, massive borders."
+  ]
+}
