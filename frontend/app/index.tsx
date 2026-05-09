@@ -18,6 +18,7 @@ import {
   getResidentById,
   getLocalResidents,
   addAccessLog,
+  preloadResidents,
   type Resident,
   type AccessLogEntry,
 } from '../src/services/storage';
@@ -35,25 +36,21 @@ export default function ScannerScreen() {
   const cameraRef = useRef<any>(null);
 
   useEffect(() => {
-    loadResidentCount();
-    const interval = setInterval(loadResidentCount, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
+    // Pre-warm cache on mount for instant lookups
+    preloadResidents().then(setResidentCount);
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') loadResidentCount();
+      if (state === 'active') preloadResidents().then(setResidentCount);
     });
     return () => sub.remove();
   }, []);
 
   useEffect(() => {
-    if (!showResult) loadResidentCount();
+    if (!showResult) preloadResidents().then(setResidentCount);
   }, [showResult]);
 
   const loadResidentCount = async () => {
-    const residents = await getLocalResidents();
-    setResidentCount(residents.length);
+    const count = await preloadResidents();
+    setResidentCount(count);
   };
 
   const handleManualLookup = async () => {
@@ -88,28 +85,79 @@ export default function ScannerScreen() {
     setLoading(false);
   }, [scanned]);
 
+  const parseValidityDate = (validity: string): Date | null => {
+    const text = validity.trim();
+
+    let match = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+    if (match) {
+      const [, day, month, year] = match;
+      const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+      return isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    const monthMap: Record<string, number> = {
+      january: 0,
+      february: 1,
+      march: 2,
+      april: 3,
+      may: 4,
+      june: 5,
+      july: 6,
+      august: 7,
+      september: 8,
+      october: 9,
+      november: 10,
+      december: 11,
+    };
+
+    match = text.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})$/i);
+    if (match) {
+      const [, day, monthName, year] = match;
+      const month = monthMap[monthName.toLowerCase()];
+      if (month === undefined) return null;
+      const parsed = new Date(Number(year), month, Number(day));
+      return isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    return null;
+  };
+
+  const isExpired = (resident: Resident): boolean => {
+    if (!resident.validity) return false;
+    if (resident.validity.toUpperCase().includes('BLACK LISTED')) return false;
+    const validityDate = parseValidityDate(resident.validity);
+    if (!validityDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return validityDate < today;
+  };
+
+  const isBlackListed = (resident: Resident): boolean => {
+    if (!resident.validity) return false;
+    return resident.validity.toUpperCase().includes('BLACK LISTED');
+  };
+
   const lookupResident = async (id: string) => {
     const found = await getResidentById(id);
     if (found) {
       setResident(found);
       setNotFound(false);
+      const denied = found.status !== 'active' || isExpired(found) || isBlackListed(found);
       const logEntry: AccessLogEntry = {
         id: Date.now().toString(),
         resident_id: found.id,
         resident_name: found.name,
         unit: found.unit,
         timestamp: new Date().toISOString(),
-        status: found.status === 'active' ? 'verified' : 'denied',
+        status: denied ? 'denied' : 'verified',
       };
       await addAccessLog(logEntry);
-      try {
-        await postAccessLog({
-          resident_id: found.id,
-          resident_name: found.name,
-          unit: found.unit,
-          status: logEntry.status,
-        });
-      } catch (_) {}
+      void postAccessLog({
+        resident_id: found.id,
+        resident_name: found.name,
+        unit: found.unit,
+        status: logEntry.status,
+      }).catch(() => {});
     } else {
       setResident(null);
       setNotFound(true);
@@ -146,45 +194,66 @@ export default function ScannerScreen() {
           </View>
         ) : resident ? (
           <View style={styles.resultFull}>
-            {/* Status Banner - thin */}
+            {/* Status Banner */}
             <View
               style={[
                 styles.statusBanner,
-                resident.status === 'active' ? styles.verifiedBanner : styles.deniedBanner,
+                (isBlackListed(resident) || isExpired(resident) || resident.status !== 'active')
+                  ? styles.deniedBanner
+                  : styles.verifiedBanner,
               ]}
             >
               <Ionicons
-                name={resident.status === 'active' ? 'checkmark-circle' : 'ban'}
+                name={(isBlackListed(resident) || isExpired(resident) || resident.status !== 'active') ? 'ban' : 'checkmark-circle'}
                 size={28}
                 color="#FFFFFF"
               />
               <Text style={styles.bannerText}>
-                {resident.status === 'active' ? 'VERIFIED' : 'INACTIVE'}
+                {isBlackListed(resident) ? 'BLACK LISTED' : isExpired(resident) ? 'EXPIRED ID' : resident.status === 'active' ? 'VERIFIED' : 'INACTIVE'}
               </Text>
             </View>
 
-            {/* FULL SCREEN PORTRAIT PHOTO - takes all remaining space */}
+            {/* FULL SCREEN PORTRAIT PHOTO */}
             <View style={styles.photoFull}>
               {(resident.local_photo || resident.photo_url || resident.photo_base64) ? (
-                <Image
-                  testID="resident-photo"
-                  source={{ uri: resident.local_photo || resident.photo_url || resident.photo_base64 }}
-                  style={styles.photoImage}
-                  resizeMode="cover"
-                />
+                <>
+                  <Image
+                    testID="resident-photo"
+                    source={{ uri: resident.local_photo || resident.photo_url || resident.photo_base64 }}
+                    style={styles.photoImage}
+                    resizeMode="cover"
+                  />
+                  {(isExpired(resident) || isBlackListed(resident)) && (
+                    <View style={styles.photoOverlay}>
+                      <Text style={styles.overlayText}>
+                        {isBlackListed(resident) ? 'BLACK\nLISTED' : 'EXPIRED\nID'}
+                      </Text>
+                    </View>
+                  )}
+                </>
               ) : (
                 <>
                   <Text style={styles.photoFullInitial}>
                     {resident.name.charAt(0).toUpperCase()}
                   </Text>
                   <Text style={styles.photoName}>{resident.name}</Text>
+                  {(isExpired(resident) || isBlackListed(resident)) && (
+                    <View style={styles.photoOverlay}>
+                      <Text style={styles.overlayText}>
+                        {isBlackListed(resident) ? 'BLACK\nLISTED' : 'EXPIRED\nID'}
+                      </Text>
+                    </View>
+                  )}
                 </>
               )}
             </View>
 
-            {/* Resident Name */}
+            {/* Resident Name + Validity */}
             <View style={styles.nameBar}>
               <Text testID="resident-name" style={styles.nameText}>{resident.name}</Text>
+              <Text style={styles.validityText}>
+                {resident.validity ? (isBlackListed(resident) ? 'BLACK LISTED' : `Valid till: ${resident.validity}`) : ''}
+              </Text>
             </View>
 
             {/* Single compact info bar */}
@@ -234,6 +303,9 @@ export default function ScannerScreen() {
   if (!permission.granted) {
     return (
       <SafeAreaView style={styles.container}>
+        <View style={styles.titleBar}>
+          <Text style={styles.titleText}>ESTANCIA ID CHECK</Text>
+        </View>
         <View style={styles.statusBar}>
           <View style={[styles.statusDot, residentCount > 0 ? styles.dotOnline : styles.dotOffline]} />
           <Text style={styles.statusText}>{residentCount} RESIDENTS IN LOCAL DB</Text>
@@ -270,6 +342,9 @@ export default function ScannerScreen() {
   // Camera scanner
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.titleBar}>
+        <Text style={styles.titleText}>ESTANCIA ID CHECK</Text>
+      </View>
       <View style={styles.statusBar}>
         <View style={[styles.statusDot, residentCount > 0 ? styles.dotOnline : styles.dotOffline]} />
         <Text style={styles.statusText}>{residentCount} RESIDENTS IN LOCAL DB</Text>
@@ -328,6 +403,8 @@ export default function ScannerScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
+  titleBar: { backgroundColor: '#0F172A', paddingVertical: 14, paddingHorizontal: 24, alignItems: 'center' },
+  titleText: { fontSize: 20, fontWeight: '900', color: '#FFFFFF', letterSpacing: 2 },
   statusBar: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingHorizontal: 24, backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
   statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
   dotOnline: { backgroundColor: '#00C853' },
@@ -367,10 +444,13 @@ const styles = StyleSheet.create({
   notFoundText: { fontSize: 16, color: '#475569', textAlign: 'center', lineHeight: 24 },
   photoFull: { flex: 1, width: '100%', backgroundColor: '#0055FF', justifyContent: 'center', alignItems: 'center' },
   photoImage: { width: '100%', height: '100%' },
+  photoOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent', transform: [{ rotate: '-35deg' }] },
+  overlayText: { fontSize: 72, fontWeight: '900', color: '#FF3B30', textAlign: 'center', lineHeight: 80, textShadowColor: '#000000', textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 6, letterSpacing: 4 },
   photoFullInitial: { fontSize: 200, fontWeight: '900', color: '#FFFFFF', opacity: 0.9 },
   photoName: { fontSize: 28, fontWeight: '900', color: '#FFFFFF', marginTop: -10 },
-  nameBar: { backgroundColor: '#FFFFFF', paddingVertical: 8, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-  nameText: { fontSize: 22, fontWeight: '900', color: '#000000', textAlign: 'center' },
+  nameBar: { backgroundColor: '#FFFFFF', paddingVertical: 8, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  nameText: { fontSize: 22, fontWeight: '900', color: '#000000' },
+  validityText: { fontSize: 13, fontWeight: '700', color: '#475569' },
   infoBar: { flexDirection: 'row', backgroundColor: '#0F172A', paddingVertical: 10, paddingHorizontal: 12 },
   infoItem: { flex: 1, alignItems: 'center' },
   infoLabel: { fontSize: 9, fontWeight: '700', color: '#94A3B8', letterSpacing: 1 },

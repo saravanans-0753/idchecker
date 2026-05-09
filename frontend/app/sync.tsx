@@ -1,73 +1,181 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
-  TextInput, Alert, SafeAreaView, ScrollView,
+  SafeAreaView, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getLocalResidents, saveLocalResidents, getLastSyncTime, setLastSyncTime } from '../src/services/storage';
-import { syncResidents, importFromSheet, getSheetUrl, saveSheetUrl } from '../src/services/api';
-import { downloadAllPhotos } from '../src/services/photos';
-import PasswordLock from '../src/components/PasswordLock';
+import { Resident, getLocalResidents, saveLocalResidents, getLastSyncTime, setLastSyncTime } from '../src/services/storage';
+import {
+  downloadAllPhotos,
+  cleanupExpiredPhotos,
+  importPhotosFromZip,
+  attachLocalPhotosById,
+} from '../src/services/photos';
+
+const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRmUIQomWijjIXfc3wryoKVQ94wZWfZxZPIv3dK08wPOfjGAqjHQu9mdiDPJEKYBLrutUQwsTvyZBMy/pub?output=csv';
+const PHOTOS_ZIP_URL = 'https://drive.google.com/uc?export=download&id=15puDxEMC5RrvxHbDugZPn1XWNSLmwIH6';
+// Optional fallback when photo_url column is empty.
+// Use {id} placeholder, e.g. 'https://example.com/photos/{id}.jpg'
+const PHOTO_URL_TEMPLATE = '';
+
+function parseCSV(text: string): Record<string, string>[] {
+  const lines = text.split('\n');
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  const rows: Record<string, string>[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const values: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let c = 0; c < line.length; c++) {
+      if (line[c] === '"') { inQuotes = !inQuotes; }
+      else if (line[c] === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
+      else { current += line[c]; }
+    }
+    values.push(current.trim());
+    const row: Record<string, string> = {};
+    headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
+    rows.push(row);
+  }
+  return rows;
+}
+
+function getCol(row: Record<string, string>, ...keys: string[]): string {
+  for (const k of keys) {
+    const val = row[k] || row[k.toLowerCase()] || row[k.toUpperCase()];
+    if (val) return val.trim();
+  }
+  return '';
+}
+
+function hasChanges(existing: Resident, incoming: Partial<Resident>): boolean {
+  const fields: (keyof Resident)[] = ['name', 'unit', 'aadhar_masked', 'vehicle_plate', 'photo_url', 'validity'];
+  for (const f of fields) {
+    const oldVal = (existing[f] || '').toString().trim();
+    const newVal = ((incoming as any)[f] || '').toString().trim();
+    if (oldVal !== newVal) return true;
+  }
+  return false;
+}
+
+function resolvePhotoUrl(id: string, row: Record<string, string>): string {
+  const fromSheet = getCol(row, 'Photo URL', 'photo_url', 'Photo', 'photo');
+  if (fromSheet) return fromSheet;
+  if (PHOTO_URL_TEMPLATE && PHOTO_URL_TEMPLATE.includes('{id}')) {
+    return PHOTO_URL_TEMPLATE.replace('{id}', encodeURIComponent(id));
+  }
+  return '';
+}
 
 export default function SyncScreen() {
-  const [unlocked, setUnlocked] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [localCount, setLocalCount] = useState(0);
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const [sheetUrl, setSheetUrl] = useState('');
-  const [sheetSaved, setSheetSaved] = useState(false);
 
-  useEffect(() => { if (unlocked) loadStatus(); }, [unlocked]);
+  useEffect(() => { loadStatus(); }, []);
 
   const loadStatus = async () => {
     const residents = await getLocalResidents();
     setLocalCount(residents.length);
     const syncTime = await getLastSyncTime();
     setLastSync(syncTime);
-    try {
-      const url = await getSheetUrl();
-      if (url) { setSheetUrl(url); setSheetSaved(true); }
-    } catch (_) {}
-  };
-
-  const handleSaveSheetUrl = async () => {
-    if (!sheetUrl.trim()) { Alert.alert('ERROR', 'Enter a Google Sheet URL'); return; }
-    try {
-      await saveSheetUrl(sheetUrl.trim());
-      setSheetSaved(true);
-      Alert.alert('SAVED', 'Sheet URL configured successfully');
-    } catch (e) {
-      Alert.alert('ERROR', 'Failed to save URL. Check internet.');
-    }
   };
 
   const handleImportFromSheet = async () => {
-    if (!sheetUrl.trim()) { Alert.alert('ERROR', 'Configure a Sheet URL first'); return; }
     setSyncing(true);
     setSyncResult(null);
     setSyncError(null);
     try {
-      // Step 1: Import from Google Sheet to server
-      const importResult = await importFromSheet(sheetUrl.trim());
-      
-      // Step 2: Sync all data from server to local
-      const data = await syncResidents();
-      
-      // Step 3: Download photos to local file system
-      setSyncResult(`Imported ${importResult.imported} residents. Downloading photos...`);
-      const residentsWithPhotos = await downloadAllPhotos(data.residents, (done, total) => {
-        setSyncResult(`Downloading photos: ${done}/${total}`);
+      setSyncResult('Fetching sheet...');
+      const response = await fetch(SHEET_URL);
+      if (!response.ok) throw new Error('Failed to fetch sheet: ' + response.status);
+      const csvText = await response.text();
+      const rows = parseCSV(csvText);
+      if (rows.length === 0) throw new Error('No data found in sheet');
+
+      setSyncResult(`Parsing ${rows.length} rows...`);
+      const existingResidents = await getLocalResidents();
+      const existingMap = new Map<string, Resident>();
+      for (const r of existingResidents) existingMap.set(r.id.toLowerCase(), r);
+
+      let added = 0, updated = 0, unchanged = 0;
+      const allResidents = new Map<string, Resident>();
+      // Keep existing residents first
+      for (const r of existingResidents) allResidents.set(r.id.toLowerCase(), r);
+
+      for (const row of rows) {
+        const id = getCol(row, 'ID', 'Id', 'id');
+        const name = getCol(row, 'Name', 'name', 'NAME');
+        if (!id || !name) continue;
+
+        const incoming = {
+          name,
+          unit: getCol(row, 'flat number', 'Flat', 'flat', 'FLAT', 'Unit', 'unit'),
+          aadhar_masked: getCol(row, 'Aadhar/SRMID', 'Aadhar', 'aadhar', 'AADHAR'),
+          photo_url: resolvePhotoUrl(id, row),
+          validity: getCol(row, 'ValidTill', 'Validity', 'validity', 'VALIDITY'),
+          vehicle_plate: getCol(row, 'Vehicle', 'vehicle', 'Vehicle Plate', 'vehicle_plate'),
+        };
+
+        const existing = existingMap.get(id.toLowerCase());
+        if (existing) {
+          if (hasChanges(existing, incoming)) {
+            // Photo URL changed — clear local_photo so it re-downloads
+            const photoChanged = (existing.photo_url || '').trim() !== (incoming.photo_url || '').trim();
+            allResidents.set(id.toLowerCase(), {
+              ...existing,
+              ...incoming,
+              local_photo: photoChanged ? '' : existing.local_photo,
+              updated_at: new Date().toISOString(),
+            });
+            updated++;
+          } else {
+            unchanged++;
+          }
+        } else {
+          allResidents.set(id.toLowerCase(), {
+            id,
+            ...incoming,
+            photo_base64: '',
+            local_photo: '',
+            status: 'active',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+          added++;
+        }
+      }
+
+      const finalList = Array.from(allResidents.values());
+      setSyncResult(`Added ${added}, Updated ${updated}, Unchanged ${unchanged}. Importing zip photos...`);
+
+      await importPhotosFromZip(PHOTOS_ZIP_URL, (done, total) => {
+        setSyncResult(`ZIP Photos: ${done}/${total} | Added ${added}, Updated ${updated}`);
       });
-      
-      await saveLocalResidents(residentsWithPhotos);
-      await setLastSyncTime(data.synced_at);
-      setLocalCount(residentsWithPhotos.length);
-      setLastSync(data.synced_at);
-      setSyncResult(`Done! ${importResult.imported} residents imported, photos saved locally`);
+
+      const withLocalById = await attachLocalPhotosById(finalList);
+
+      setSyncResult(`Downloading fallback URL photos...`);
+
+      const withPhotos = await downloadAllPhotos(withLocalById, (done, total) => {
+        setSyncResult(`Photos: ${done}/${total} | Added ${added}, Updated ${updated}`);
+      });
+
+      setSyncResult(`Cleaning up expired photos...`);
+      const cleaned = await cleanupExpiredPhotos(withPhotos);
+
+      await saveLocalResidents(cleaned);
+      const now = new Date().toISOString();
+      await setLastSyncTime(now);
+      setLocalCount(cleaned.length);
+      setLastSync(now);
+      setSyncResult(`Done! Added ${added}, Updated ${updated}, Unchanged ${unchanged}. Total: ${cleaned.length}`);
     } catch (error: any) {
-      setSyncError('IMPORT FAILED - Check sheet URL & internet');
+      setSyncError(`IMPORT FAILED: ${error?.message || 'Check connection & sheet URL'}`);
     } finally {
       setSyncing(false);
     }
@@ -78,14 +186,10 @@ export default function SyncScreen() {
     setSyncResult(null);
     setSyncError(null);
     try {
-      const data = await syncResidents();
-      await saveLocalResidents(data.residents);
-      await setLastSyncTime(data.synced_at);
-      setLocalCount(data.count);
-      setLastSync(data.synced_at);
-      setSyncResult(`Synced ${data.count} residents to local`);
+      await loadStatus();
+      setSyncResult(`Local database has ${localCount} residents`);
     } catch (error: any) {
-      setSyncError('SYNC FAILED - Check internet connection');
+      setSyncError(`SYNC FAILED: ${error?.message || 'Check connection'}`);
     } finally {
       setSyncing(false);
     }
@@ -96,12 +200,11 @@ export default function SyncScreen() {
     return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
-  if (!unlocked) {
-    return <PasswordLock title="SYNC ACCESS" onUnlock={() => setUnlocked(true)} />;
-  }
-
   return (
     <SafeAreaView testID="sync-screen" style={styles.container}>
+      <View style={styles.titleBar}>
+        <Text style={styles.titleText}>ESTANCIA ID CHECK</Text>
+      </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Status */}
         <View style={styles.statusCard}>
@@ -119,33 +222,6 @@ export default function SyncScreen() {
               <Text style={styles.statusLabel}>LAST SYNCED</Text>
               <Text style={styles.statusValue}>{lastSync ? formatSyncTime(lastSync) : 'NEVER'}</Text>
             </View>
-          </View>
-        </View>
-
-        {/* Google Sheet Configuration */}
-        <View style={styles.sectionHeader}>
-          <Ionicons name="document-text" size={18} color="#0055FF" />
-          <Text style={styles.sectionTitle}>GOOGLE SHEET SOURCE</Text>
-        </View>
-        <View style={styles.sheetConfig}>
-          <Text style={styles.sheetHint}>
-            Paste your published Google Sheet URL below.{'\n'}
-            Sheet columns: ID, Name, Flat, Aadhar, Photo URL, Validity
-          </Text>
-          <TextInput
-            testID="sheet-url-input"
-            style={styles.sheetInput}
-            value={sheetUrl}
-            onChangeText={(t) => { setSheetUrl(t); setSheetSaved(false); }}
-            placeholder="https://docs.google.com/spreadsheets/d/e/..."
-            placeholderTextColor="#94A3B8"
-            multiline
-            numberOfLines={2}
-          />
-          <View style={styles.sheetBtnRow}>
-            <TouchableOpacity testID="save-sheet-url-btn" style={styles.saveUrlBtn} onPress={handleSaveSheetUrl}>
-              <Text style={styles.saveUrlText}>{sheetSaved ? '✓ SAVED' : 'SAVE URL'}</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -200,6 +276,8 @@ export default function SyncScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
+  titleBar: { backgroundColor: '#0F172A', paddingVertical: 14, paddingHorizontal: 24, alignItems: 'center' },
+  titleText: { fontSize: 20, fontWeight: '900', color: '#FFFFFF', letterSpacing: 2 },
   scrollContent: { padding: 20 },
   statusCard: { borderWidth: 2, borderColor: '#000000', padding: 16, backgroundColor: '#F8FAFC', marginBottom: 24, elevation: 4 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },

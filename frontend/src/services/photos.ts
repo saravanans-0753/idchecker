@@ -1,4 +1,17 @@
 import { File, Directory, Paths } from 'expo-file-system/next';
+import {
+  getInfoAsync,
+  makeDirectoryAsync,
+  readAsStringAsync,
+  writeAsStringAsync,
+  readDirectoryAsync,
+  downloadAsync,
+  deleteAsync,
+  EncodingType,
+  documentDirectory,
+  cacheDirectory,
+} from 'expo-file-system/legacy';
+import JSZip from 'jszip';
 import { type Resident } from './storage';
 
 const PHOTOS_DIR_NAME = 'resident_photos';
@@ -17,6 +30,47 @@ function getFileExtension(url: string): string {
 }
 
 /**
+ * Convert Google Drive share/view URLs to direct download URLs.
+ * Handles formats:
+ *   https://drive.google.com/file/d/FILE_ID/view?...
+ *   https://drive.google.com/open?id=FILE_ID
+ *   https://drive.google.com/uc?id=FILE_ID  (already direct)
+ */
+function toDirectUrl(url: string): string {
+  if (!url) return url;
+  // Already a direct download URL
+  if (url.includes('drive.google.com/uc')) return url;
+  // /file/d/FILE_ID/...
+  const fileMatch = url.match(/drive\.google\.com\/file\/d\/([^/?\s]+)/);
+  if (fileMatch) return `https://drive.google.com/uc?export=download&id=${fileMatch[1]}`;
+  // open?id=FILE_ID
+  const openMatch = url.match(/drive\.google\.com\/open\?id=([^&\s]+)/);
+  if (openMatch) return `https://drive.google.com/uc?export=download&id=${openMatch[1]}`;
+  return url;
+}
+
+function getLegacyPhotosDirPath(): string {
+  return `${documentDirectory}${PHOTOS_DIR_NAME}`;
+}
+
+async function ensureLegacyPhotosDir(): Promise<string> {
+  const dir = getLegacyPhotosDirPath();
+  const info = await getInfoAsync(dir);
+  if (!info.exists) {
+    await makeDirectoryAsync(dir, { intermediates: true });
+  }
+  return dir;
+}
+
+function isImageFile(name: string): boolean {
+  return /\.(jpg|jpeg|png|webp|gif)$/i.test(name);
+}
+
+function getFileStem(name: string): string {
+  return name.replace(/\.[^.]+$/, '');
+}
+
+/**
  * Download a photo from URL and save to local file system.
  * Returns the local file URI or empty string if failed.
  */
@@ -25,7 +79,8 @@ export async function downloadPhoto(residentId: string, photoUrl: string): Promi
 
   try {
     const dir = await getPhotosDir();
-    const ext = getFileExtension(photoUrl);
+    const directUrl = toDirectUrl(photoUrl);
+    const ext = getFileExtension(directUrl);
     const fileName = `${residentId}${ext}`;
     const filePath = new File(dir, fileName);
 
@@ -35,7 +90,7 @@ export async function downloadPhoto(residentId: string, photoUrl: string): Promi
     }
 
     // Download
-    const output = await File.downloadFileAsync(photoUrl, dir, { name: fileName });
+    const output = await File.downloadFileAsync(directUrl, dir, { name: fileName });
     return output.uri;
   } catch (error) {
     console.warn(`Photo download failed for ${residentId}:`, error);
@@ -70,6 +125,91 @@ export async function downloadAllPhotos(
 }
 
 /**
+ * Download photos ZIP, extract image files into app-private photos folder,
+ * and delete ZIP once extraction completes.
+ */
+export async function importPhotosFromZip(
+  zipUrl: string,
+  onProgress?: (done: number, total: number) => void
+): Promise<number> {
+  if (!zipUrl) return 0;
+
+  const directUrl = toDirectUrl(zipUrl);
+  const photosDir = await ensureLegacyPhotosDir();
+  const zipPath = `${cacheDirectory}photos_sync.zip`;
+
+  try {
+    await downloadAsync(directUrl, zipPath);
+    const zipBase64 = await readAsStringAsync(zipPath, {
+      encoding: EncodingType.Base64,
+    });
+
+    const zip = await JSZip.loadAsync(zipBase64, { base64: true });
+    const files = Object.values(zip.files).filter((f) => !f.dir && isImageFile(f.name));
+    const total = files.length;
+    let done = 0;
+
+    for (const f of files) {
+      const fileName = f.name.split('/').pop() || f.name;
+      const dataBase64 = await f.async('base64');
+      await writeAsStringAsync(`${photosDir}/${fileName}`, dataBase64, {
+        encoding: EncodingType.Base64,
+      });
+      done++;
+      if (onProgress) onProgress(done, total);
+    }
+
+    return total;
+  } finally {
+    const zipInfo = await getInfoAsync(zipPath);
+    if (zipInfo.exists) {
+      await deleteAsync(zipPath, { idempotent: true });
+    }
+  }
+}
+
+/**
+ * Populate local_photo using extracted local files with name = resident id.
+ */
+export async function attachLocalPhotosById(residents: Resident[]): Promise<Resident[]> {
+  const updated = [...residents];
+  const photosDir = await getPhotosDir();
+
+  for (let i = 0; i < updated.length; i++) {
+    const r = updated[i];
+    const idLower = r.id.toLowerCase();
+
+    let foundUri = '';
+    for (const ext of ['.jpg', '.jpeg', '.png', '.webp', '.gif']) {
+      const candidates = [`${r.id}${ext}`, `${idLower}${ext}`, `${r.id.toUpperCase()}${ext}`];
+      for (const name of candidates) {
+        const f = new File(photosDir, name);
+        if (f.exists) {
+          foundUri = f.uri;
+          break;
+        }
+      }
+      if (foundUri) break;
+    }
+
+    if (foundUri) {
+      updated[i] = { ...r, local_photo: foundUri };
+      continue;
+    }
+
+    // Fallback: try matching any image whose stem equals resident id (case-insensitive)
+    const legacyDir = await ensureLegacyPhotosDir();
+    const names = await readDirectoryAsync(legacyDir);
+    const match = names.find((n) => isImageFile(n) && getFileStem(n).toLowerCase() === idLower);
+    if (match) {
+      updated[i] = { ...r, local_photo: `${legacyDir}/${match}` };
+    }
+  }
+
+  return updated;
+}
+
+/**
  * Delete a resident's photo from local file system.
  */
 export async function deleteLocalPhoto(residentId: string): Promise<void> {
@@ -84,4 +224,70 @@ export async function deleteLocalPhoto(residentId: string): Promise<void> {
       }
     }
   } catch (_) {}
+}
+
+function parseValidityDate(validity: string): Date | null {
+  const text = validity.trim();
+
+  let match = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (match) {
+    const [, day, month, year] = match;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const monthMap: Record<string, number> = {
+    january: 0,
+    february: 1,
+    march: 2,
+    april: 3,
+    may: 4,
+    june: 5,
+    july: 6,
+    august: 7,
+    september: 8,
+    october: 9,
+    november: 10,
+    december: 11,
+  };
+
+  match = text.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})$/i);
+  if (match) {
+    const [, day, monthName, year] = match;
+    const month = monthMap[monthName.toLowerCase()];
+    if (month === undefined) return null;
+    const parsed = new Date(Number(year), month, Number(day));
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
+}
+
+/**
+ * Check if a resident's validity date has expired.
+ */
+function isExpired(validity: string): boolean {
+  if (!validity) return false;
+  if (validity.toUpperCase().includes('BLACK LISTED')) return false;
+  const validityDate = parseValidityDate(validity);
+  if (!validityDate) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return validityDate < today;
+}
+
+/**
+ * Cleanup local photos for expired residents only.
+ * Blacklisted residents stay in the database with their photos intact.
+ */
+export async function cleanupExpiredPhotos(residents: Resident[]): Promise<Resident[]> {
+  const updated = [...residents];
+  for (let i = 0; i < updated.length; i++) {
+    const r = updated[i];
+    if (r.local_photo && isExpired(r.validity)) {
+      await deleteLocalPhoto(r.id);
+      updated[i] = { ...r, local_photo: '' };
+    }
+  }
+  return updated;
 }

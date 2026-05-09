@@ -1,8 +1,28 @@
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
+// Add timeout to fetch requests
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 10000) {
+  if (!BACKEND_URL) {
+    throw new Error('Backend URL not configured. Check .env file.');
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
+    return res;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout - check internet connection');
+    }
+    throw error;
+  }
+}
+
 export async function syncResidents() {
-  const res = await fetch(`${BACKEND_URL}/api/sync`);
-  if (!res.ok) throw new Error('Sync failed');
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/sync`);
+  if (!res.ok) throw new Error('Sync failed - ' + res.statusText);
   return res.json();
 }
 
@@ -12,7 +32,7 @@ export async function postAccessLog(data: {
   unit: string;
   status: string;
 }) {
-  const res = await fetch(`${BACKEND_URL}/api/access-logs`, {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/access-logs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -28,7 +48,7 @@ export async function createResident(data: {
   aadhar_masked?: string;
   vehicle_plate?: string;
 }) {
-  const res = await fetch(`${BACKEND_URL}/api/residents`, {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/residents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -38,7 +58,7 @@ export async function createResident(data: {
 }
 
 export async function deleteResident(id: string) {
-  const res = await fetch(`${BACKEND_URL}/api/residents/${id}`, {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/residents/${id}`, {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error('Failed to delete resident');
@@ -46,7 +66,7 @@ export async function deleteResident(id: string) {
 }
 
 export async function importFromSheet(sheetUrl: string) {
-  const res = await fetch(`${BACKEND_URL}/api/import-sheet`, {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/import-sheet`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sheet_url: sheetUrl }),
@@ -56,14 +76,14 @@ export async function importFromSheet(sheetUrl: string) {
 }
 
 export async function getSheetUrl(): Promise<string> {
-  const res = await fetch(`${BACKEND_URL}/api/config/sheet-url`);
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/config/sheet-url`);
   if (!res.ok) return '';
   const data = await res.json();
   return data.sheet_url || '';
 }
 
 export async function saveSheetUrl(sheetUrl: string) {
-  const res = await fetch(`${BACKEND_URL}/api/config/sheet-url`, {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/config/sheet-url`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sheet_url: sheetUrl }),

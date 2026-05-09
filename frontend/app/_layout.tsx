@@ -1,15 +1,28 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+  
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: '#0F172A' },
-        headerTintColor: '#FFFFFF',
-        headerTitleStyle: { fontWeight: '900', fontSize: 18, letterSpacing: 1 },
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            paddingBottom: insets.bottom || 12,
+            marginBottom: insets.bottom ? 0 : 0,
+            minHeight: 64 + (insets.bottom || 0),
+          },
+        ],
+        contentStyle: {
+          paddingBottom: insets.bottom,
+        },
+        sceneContainerStyle: {
+          paddingBottom: insets.bottom,
+        },
         tabBarActiveTintColor: '#0055FF',
         tabBarInactiveTintColor: '#475569',
         tabBarLabelStyle: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
@@ -19,7 +32,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'SCAN',
-          headerTitle: 'GATE ID CHECK',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="scan" size={size} color={color} />
           ),
@@ -29,7 +42,7 @@ export default function TabLayout() {
         name="logs"
         options={{
           title: 'LOG',
-          headerTitle: 'ACCESS LOG',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="list" size={size} color={color} />
           ),
@@ -39,7 +52,7 @@ export default function TabLayout() {
         name="sync"
         options={{
           title: 'SYNC',
-          headerTitle: 'DATA SYNC',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cloud-download" size={size} color={color} />
           ),
@@ -49,7 +62,7 @@ export default function TabLayout() {
         name="admin"
         options={{
           title: 'ADMIN',
-          headerTitle: 'MANAGE RESIDENTS',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people" size={size} color={color} />
           ),
@@ -65,7 +78,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     borderTopColor: '#000000',
     height: 64,
-    paddingBottom: 8,
     paddingTop: 8,
   },
 });

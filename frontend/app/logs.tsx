@@ -68,6 +68,9 @@ export default function LogsScreen() {
 
   return (
     <View testID="access-log-screen" style={styles.container}>
+      <View style={styles.titleBar}>
+        <Text style={styles.titleText}>ESTANCIA ID CHECK</Text>
+      </View>
       <View style={styles.header}>
         <Text style={styles.headerCount}>{logs.length}</Text>
         <Text style={styles.headerLabel}>ENTRIES</Text>
@@ -102,6 +105,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
+  titleBar: { backgroundColor: '#0F172A', paddingVertical: 14, paddingHorizontal: 24, alignItems: 'center' },
+  titleText: { fontSize: 20, fontWeight: '900', color: '#FFFFFF', letterSpacing: 2 },
   header: {
     flexDirection: 'row',
     alignItems: 'baseline',

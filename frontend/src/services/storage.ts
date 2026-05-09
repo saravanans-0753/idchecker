@@ -28,10 +28,30 @@ export interface AccessLogEntry {
   status: string;
 }
 
+// In-memory cache for O(1) lookups
+let _cache: Resident[] | null = null;
+let _lookupMap: Map<string, Resident> | null = null;
+
+function buildLookupMap(residents: Resident[]): Map<string, Resident> {
+  const map = new Map<string, Resident>();
+  for (const r of residents) {
+    map.set(r.id.toLowerCase(), r);
+  }
+  return map;
+}
+
+function invalidateCache() {
+  _cache = null;
+  _lookupMap = null;
+}
+
 // Residents
 export async function getLocalResidents(): Promise<Resident[]> {
+  if (_cache) return _cache;
   const data = await AsyncStorage.getItem(RESIDENTS_KEY);
-  return data ? JSON.parse(data) : [];
+  _cache = data ? JSON.parse(data) : [];
+  _lookupMap = buildLookupMap(_cache!);
+  return _cache!;
 }
 
 export async function saveLocalResidents(residents: Resident[]): Promise<void> {
@@ -42,18 +62,28 @@ export async function saveLocalResidents(residents: Resident[]): Promise<void> {
   }
   const deduped = Array.from(map.values());
   await AsyncStorage.setItem(RESIDENTS_KEY, JSON.stringify(deduped));
+  // Update cache immediately
+  _cache = deduped;
+  _lookupMap = buildLookupMap(deduped);
 }
 
 export async function getResidentById(id: string): Promise<Resident | null> {
-  const residents = await getLocalResidents();
-  const searchId = id.toLowerCase();
-  return residents.find(r => r.id.toLowerCase() === searchId) || null;
+  if (!_lookupMap) await getLocalResidents();
+  return _lookupMap!.get(id.toLowerCase()) || null;
 }
 
 export async function deleteLocalResident(id: string): Promise<void> {
   const residents = await getLocalResidents();
   const filtered = residents.filter(r => r.id !== id);
   await AsyncStorage.setItem(RESIDENTS_KEY, JSON.stringify(filtered));
+  _cache = filtered;
+  _lookupMap = buildLookupMap(filtered);
+}
+
+// Pre-warm cache on import — call after app starts
+export async function preloadResidents(): Promise<number> {
+  const residents = await getLocalResidents();
+  return residents.length;
 }
 
 // Access Logs

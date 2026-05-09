@@ -5,15 +5,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getLocalResidents, type Resident } from '../src/services/storage';
-import PasswordLock from '../src/components/PasswordLock';
 
 export default function AdminScreen() {
-  const [unlocked, setUnlocked] = useState(false);
   const [residents, setResidents] = useState<Resident[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
 
-  useEffect(() => { if (unlocked) loadResidents(); }, [unlocked]);
+  useEffect(() => { loadResidents(); }, []);
 
   const loadResidents = async () => {
     const data = await getLocalResidents();
@@ -25,10 +23,6 @@ export default function AdminScreen() {
     await loadResidents();
     setRefreshing(false);
   }, []);
-
-  if (!unlocked) {
-    return <PasswordLock title="ADMIN ACCESS" onUnlock={() => setUnlocked(true)} />;
-  }
 
   const renderResident = ({ item }: { item: Resident }) => (
     <TouchableOpacity testID={`admin-resident-${item.id}`} style={styles.residentItem} onPress={() => setSelectedResident(item)} activeOpacity={0.7}>
@@ -52,6 +46,9 @@ export default function AdminScreen() {
 
   return (
     <SafeAreaView testID="admin-screen" style={styles.container}>
+      <View style={styles.titleBar}>
+        <Text style={styles.titleText}>ESTANCIA ID CHECK</Text>
+      </View>
       <View style={styles.header}>
         <View>
           <Text style={styles.headerCount}>{residents.length}</Text>
@@ -113,6 +110,8 @@ export default function AdminScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
+  titleBar: { backgroundColor: '#0F172A', paddingVertical: 14, paddingHorizontal: 24, alignItems: 'center' },
+  titleText: { fontSize: 20, fontWeight: '900', color: '#FFFFFF', letterSpacing: 2 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingHorizontal: 24, borderBottomWidth: 2, borderBottomColor: '#000000' },
   headerCount: { fontSize: 36, fontWeight: '900', color: '#000000' },
   headerLabel: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 2 },
