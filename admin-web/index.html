@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ID Checker Admin Uploader</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #dbe4f0;
+      --brand: #0055ff;
+      --ok: #0f766e;
+      --warn: #b45309;
+      --bad: #b91c1c;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at top right, #dce7ff 0%, #f5f7fb 40%, #eef2f9 100%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .shell {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+      letter-spacing: 0.2px;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field label {
+      font-size: 12px;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      color: var(--muted);
+    }
+
+    input[type="text"],
+    input[type="password"],
+    textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+      color: var(--text);
+      background: #fff;
+    }
+
+    textarea {
+      min-height: 200px;
+      resize: vertical;
+      font-family: Consolas, "Courier New", monospace;
+      line-height: 1.45;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 10px;
+      background: var(--brand);
+      color: #fff;
+      padding: 11px 16px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 12px;
+      padding: 6px 10px;
+      color: var(--muted);
+      background: #f8fafc;
+    }
+
+    .status {
+      white-space: pre-wrap;
+      font-size: 14px;
+      line-height: 1.45;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      padding: 10px 12px;
+      min-height: 72px;
+    }
+
+    .status.ok { border-color: #99f6e4; background: #f0fdfa; color: var(--ok); }
+    .status.warn { border-color: #fed7aa; background: #fff7ed; color: var(--warn); }
+    .status.bad { border-color: #fecaca; background: #fef2f2; color: var(--bad); }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 5px;
+    }
+
+    @media (max-width: 800px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="card">
+      <h1>ID Checker Admin Uploader</h1>
+      <p>Paste rows from Excel and select resident photos. Rows are pushed to Google Sheets. Photos are zipped and downloaded for you to manually upload to Google Drive.</p>
+    </div>
+
+    <div class="card">
+      <div class="field">
+        <label for="rowsInput">Paste Rows From Excel</label>
+        <textarea id="rowsInput" placeholder="Paste copied rows here. Header row is optional. Expected columns: Name, flat number, Valid From, ValidTill, Aadhar/SRMID, Moblie, ID"></textarea>
+      </div>
+      <div class="row" style="margin-top: 10px;">
+        <button class="btn" id="uploadBtn" type="button">Update Data</button>
+        <span class="pill">Sheet columns: <code>Name</code>, <code>flat number</code>, <code>Valid From</code>, <code>ValidTill</code>, <code>Aadhar/SRMID</code>, <code>Moblie</code>, <code>ID</code></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="field">
+        <label for="photosFilesInput">Pick Photo Files</label>
+        <input id="photosFilesInput" type="file" accept="image/*" multiple />
+      </div>
+      <div class="row" style="margin-top: 10px;">
+        <span class="pill" id="photosSummary">No photos selected</span>
+        <button class="btn" id="downloadZipBtn" type="button" style="background:#0f766e">Download Photos ZIP</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="status" class="status">Ready.</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script>
+    const HEADERS = [
+      "Name",
+      "flat number",
+      "Valid From",
+      "ValidTill",
+      "Aadhar/SRMID",
+      "Moblie",
+      "ID"
+    ];
+
+    const HARDCODED_CONFIG = {
+      scriptUrl: "https://script.google.com/macros/s/AKfycbxQWae9_XD8hpPBPJlf5eN3DBBM1LNK8jwcBZfQ6YtouJ2YRqz6HBnguIaY8389Co4/exec",
+      spreadsheetId: "1ANtTM-GSCYYEEN-S2HxEegRMvO5ctpsmt0NqXErvVJw",
+      sheetName: "sheet1",
+      token: ""
+    };
+
+    const els = {
+      rowsInput: document.getElementById("rowsInput"),
+      photosFilesInput: document.getElementById("photosFilesInput"),
+      photosSummary: document.getElementById("photosSummary"),
+      uploadBtn: document.getElementById("uploadBtn"),
+      status: document.getElementById("status")
+    };
+
+    let parsedRows = [];
+
+    function setStatus(message, tone) {
+      els.status.textContent = message;
+      els.status.className = "status" + (tone ? " " + tone : "");
+    }
+
+    function normalizeHeader(value) {
+      return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+    }
+
+    function splitLine(line, delimiter) {
+      const out = [];
+      let current = "";
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i];
+        if (ch === '"') {
+          inQuotes = !inQuotes;
+        } else if (ch === delimiter && !inQuotes) {
+          out.push(current);
+          current = "";
+        } else {
+          current += ch;
+        }
+      }
+      out.push(current);
+      return out.map((x) => x.trim().replace(/^"|"$/g, ""));
+    }
+
+    function parseRows(rawText) {
+      const text = String(rawText || "").trim();
+      if (!text) return [];
+
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      if (!lines.length) return [];
+
+      const delimiter = lines[0].includes("\t") ? "\t" : ",";
+      const firstRow = splitLine(lines[0], delimiter);
+      const normalizedFirst = firstRow.map(normalizeHeader);
+
+      const hasHeader = normalizedFirst.some((x) => [
+        "name", "flat number", "valid from", "validtill", "aadhar/srmid", "moblie", "id"
+      ].includes(x));
+
+      const sourceHeaders = hasHeader ? firstRow : HEADERS;
+      const dataLines = hasHeader ? lines.slice(1) : lines;
+
+      const indexMap = {
+        Name: sourceHeaders.findIndex((h, i) => {
+          const v = normalizeHeader(h);
+          return v === "name" || (!hasHeader && i === 0);
+        }),
+        "flat number": sourceHeaders.findIndex((h, i) => {
+          const v = normalizeHeader(h);
+          return v === "flat number" || v === "flat" || (!hasHeader && i === 1);
+        }),
+        "Valid From": sourceHeaders.findIndex((h, i) => {
+          const v = normalizeHeader(h);
+          return v === "valid from" || v === "validfrom" || (!hasHeader && i === 2);
+        }),
+        ValidTill: sourceHeaders.findIndex((h, i) => {
+          const v = normalizeHeader(h);
+          return v === "validtill" || v === "valid till" || (!hasHeader && i === 3);
+        }),
+        "Aadhar/SRMID": sourceHeaders.findIndex((h, i) => {
+          const v = normalizeHeader(h);
+          return v === "aadhar/srmid" || v === "aadhar" || (!hasHeader && i === 4);
+        }),
+        Moblie: sourceHeaders.findIndex((h, i) => {
+          const v = normalizeHeader(h);
+          return v === "moblie" || v === "mobile" || (!hasHeader && i === 5);
+        }),
+        ID: sourceHeaders.findIndex((h, i) => {
+          const v = normalizeHeader(h);
+          return v === "id" || (!hasHeader && i === 6);
+        })
+      };
+
+      const rows = [];
+
+      dataLines.forEach((line) => {
+        const cols = splitLine(line, delimiter);
+        const row = {};
+
+        HEADERS.forEach((key) => {
+          const idx = indexMap[key];
+          row[key] = idx >= 0 ? String(cols[idx] || "").trim() : "";
+        });
+
+        if (row.ID || row.Name) rows.push(row);
+      });
+
+      return rows;
+    }
+
+    function getSelectedPhotos() {
+      return Array.from(els.photosFilesInput.files || []).filter((f) => f.type.startsWith("image/"));
+    }
+
+    function getFileNameOnly(file) {
+      return file.name;
+    }
+
+    async function createPhotosZipBase64(files) {
+      if (!files.length) return "";
+      const zip = new JSZip();
+      files.forEach((file) => {
+        zip.file(getFileNameOnly(file), file);
+      });
+      return zip.generateAsync({ type: "base64", compression: "DEFLATE", compressionOptions: { level: 6 } });
+    }
+
+    function validateRows(rows) {
+      const errors = [];
+      rows.forEach((r, idx) => {
+        if (!r.ID) errors.push("Row " + (idx + 1) + ": missing ID");
+        if (!r.Name) errors.push("Row " + (idx + 1) + ": missing Name");
+      });
+      return errors;
+    }
+
+    function updatePhotoSummary() {
+      const files = getSelectedPhotos();
+      if (!files.length) {
+        els.photosSummary.textContent = "No photos selected";
+        return;
+      }
+      const sampleNames = files.slice(0, 3).map((f) => getFileNameOnly(f)).join(", ");
+      els.photosSummary.textContent = files.length + " image(s) selected" + (sampleNames ? " | " + sampleNames + (files.length > 3 ? " ..." : "") : "");
+    }
+
+    async function pushRows() {
+      const scriptUrl = HARDCODED_CONFIG.scriptUrl;
+      const spreadsheetId = HARDCODED_CONFIG.spreadsheetId;
+      const sheetName = HARDCODED_CONFIG.sheetName;
+      const token = HARDCODED_CONFIG.token;
+
+      if (!scriptUrl || !spreadsheetId) {
+        setStatus("Hardcoded uploader config is missing required values.", "bad");
+        return;
+      }
+
+      parsedRows = parseRows(els.rowsInput.value);
+      if (!parsedRows.length) {
+        setStatus("Paste row data first. Nothing to upload.", "bad");
+        return;
+      }
+
+      const validationErrors = validateRows(parsedRows);
+      if (validationErrors.length) {
+        setStatus("Fix row issues before upload:\n" + validationErrors.slice(0, 12).join("\n"), "bad");
+        return;
+      }
+
+      els.uploadBtn.disabled = true;
+
+      try {
+        const requestId = Date.now().toString() + "-" + Math.random().toString(36).slice(2, 8);
+        setStatus("Pushing rows to Google Sheet...", "warn");
+
+        const payload = {
+          token,
+          spreadsheetId,
+          sheetName,
+          requestId,
+          rows: parsedRows
+        };
+
+        const formBody = new URLSearchParams();
+        formBody.set("payload", JSON.stringify(payload));
+
+        await fetch(scriptUrl, {
+          method: "POST",
+          body: formBody.toString(),
+          headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+          mode: "no-cors"
+        });
+
+        // Poll status via JSONP
+        async function sleep(ms) {
+          return new Promise((resolve) => setTimeout(resolve, ms));
+        }
+
+        async function fetchStatus() {
+          return new Promise((resolve, reject) => {
+            const callbackName = "statusCb_" + requestId.replace(/[^a-zA-Z0-9_]/g, "_") + "_" + Date.now();
+            const statusUrl = scriptUrl + "?action=status&requestId=" + encodeURIComponent(requestId) + "&callback=" + encodeURIComponent(callbackName);
+            const script = document.createElement("script");
+            let done = false;
+            const cleanup = () => { if (script.parentNode) script.parentNode.removeChild(script); try { delete window[callbackName]; } catch (_) {} };
+            const timeout = setTimeout(() => { if (done) return; done = true; cleanup(); reject(new Error("timeout")); }, 8000);
+            window[callbackName] = (p) => { if (done) return; done = true; clearTimeout(timeout); cleanup(); resolve(p); };
+            script.onerror = () => { if (done) return; done = true; clearTimeout(timeout); cleanup(); reject(new Error("load failed")); };
+            script.src = statusUrl;
+            document.head.appendChild(script);
+          });
+        }
+
+        setStatus("Rows submitted. Checking result...", "warn");
+        let statusBody = null;
+        for (let attempt = 1; attempt <= 15; attempt++) {
+          await sleep(1000);
+          try {
+            const probe = await fetchStatus();
+            if (probe && probe.ok && probe.result && probe.result.found && probe.result.status) { statusBody = probe; break; }
+          } catch (_) {}
+        }
+
+        if (!statusBody || !statusBody.result || !statusBody.result.status) {
+          setStatus("Rows submitted but status could not be confirmed. Check the sheet manually.", "warn");
+          return;
+        }
+
+        const s = statusBody.result.status;
+        if (!s.ok) throw new Error(s.error || "Row upload failed");
+
+        const parts = ["Done."];
+        if (s.rowsUpdated) parts.push("Updated: " + s.rowsUpdated + " existing row(s)");
+        if (s.rowsAppended) parts.push("Appended: " + s.rowsAppended + " new row(s)");
+        parts.push("Sheet: " + sheetName);
+        setStatus(parts.join("\n"), "ok");
+      } catch (err) {
+        setStatus("Row upload failed: " + (err.message || err), "bad");
+      } finally {
+        els.uploadBtn.disabled = false;
+      }
+    }
+
+    async function downloadZip() {
+      const photos = getSelectedPhotos();
+      if (!photos.length) {
+        setStatus("Select photos first before downloading ZIP.", "bad");
+        return;
+      }
+
+      els.downloadZipBtn.disabled = true;
+      try {
+        setStatus("Creating ZIP from " + photos.length + " photo(s)...", "warn");
+        const zip = new JSZip();
+        photos.forEach((file) => { zip.file(getFileNameOnly(file), file); });
+        const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "faces.zip";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        setStatus("ZIP downloaded (" + photos.length + " photos, " + (blob.size / 1024).toFixed(0) + " KB).\nManually upload faces.zip to Google Drive to replace the existing ZIP.", "ok");
+      } catch (err) {
+        setStatus("ZIP creation failed: " + (err.message || err), "bad");
+      } finally {
+        els.downloadZipBtn.disabled = false;
+      }
+    }
+
+    els.uploadBtn.addEventListener("click", pushRows);
+    els.downloadZipBtn = document.getElementById("downloadZipBtn");
+    els.downloadZipBtn.addEventListener("click", downloadZip);
+    els.photosFilesInput.addEventListener("change", updatePhotoSummary);
+  </script>
+</body>
+</html>

@@ -9,6 +9,7 @@ import {
   Platform,
   ActivityIndicator,
   SafeAreaView,
+  KeyboardAvoidingView,
   AppState,
   Image,
 } from 'react-native';
@@ -60,6 +61,11 @@ export default function ScannerScreen() {
     await lookupResident(manualId.trim());
     setLoading(false);
     setManualId('');
+  };
+
+  const handleManualIdChange = (value: string) => {
+    // Resident IDs are numeric; strip non-digits so pasted text cannot include letters.
+    setManualId(value.replace(/[^0-9]/g, ''));
   };
 
   const handleCaptureAndScan = async () => {
@@ -303,38 +309,47 @@ export default function ScannerScreen() {
   if (!permission.granted) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.titleBar}>
-          <Text style={styles.titleText}>ESTANCIA ID CHECK</Text>
-        </View>
-        <View style={styles.statusBar}>
-          <View style={[styles.statusDot, residentCount > 0 ? styles.dotOnline : styles.dotOffline]} />
-          <Text style={styles.statusText}>{residentCount} RESIDENTS IN LOCAL DB</Text>
-        </View>
-        <View style={styles.permissionBox}>
-          <Ionicons name="camera-outline" size={56} color="#0F172A" />
-          <Text style={styles.permissionTitle}>CAMERA ACCESS</Text>
-          <Text style={styles.permissionText}>Grant camera to scan barcodes</Text>
-          <TouchableOpacity testID="grant-camera-permission-btn" style={styles.actionButton} onPress={requestPermission}>
-            <Text style={styles.actionButtonText}>GRANT PERMISSION</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.manualSection}>
-          <Text style={styles.manualLabel}>MANUAL ID ENTRY</Text>
-          <View style={styles.manualRow}>
-            <TextInput
-              testID="manual-id-input"
-              style={styles.manualInput}
-              value={manualId}
-              onChangeText={setManualId}
-              placeholder="e.g. RES001"
-              placeholderTextColor="#94A3B8"
-              autoCapitalize="characters"
-            />
-            <TouchableOpacity testID="manual-lookup-btn" style={styles.lookupBtn} onPress={handleManualLookup} disabled={loading}>
-              {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.lookupBtnText}>LOOK UP</Text>}
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+        >
+          <View style={styles.titleBar}>
+            <Text style={styles.titleText}>ESTANCIA ID CHECK</Text>
+          </View>
+          <View style={styles.statusBar}>
+            <View style={[styles.statusDot, residentCount > 0 ? styles.dotOnline : styles.dotOffline]} />
+            <Text style={styles.statusText}>{residentCount} RESIDENTS IN LOCAL DB</Text>
+          </View>
+          <View style={styles.permissionBox}>
+            <Ionicons name="camera-outline" size={56} color="#0F172A" />
+            <Text style={styles.permissionTitle}>CAMERA ACCESS</Text>
+            <Text style={styles.permissionText}>Grant camera to scan barcodes</Text>
+            <TouchableOpacity testID="grant-camera-permission-btn" style={styles.actionButton} onPress={requestPermission}>
+              <Text style={styles.actionButtonText}>GRANT PERMISSION</Text>
             </TouchableOpacity>
           </View>
-        </View>
+          <View style={styles.manualSection}>
+            <Text style={styles.manualLabel}>MANUAL ID ENTRY</Text>
+            <View style={styles.manualRow}>
+              <TextInput
+                testID="manual-id-input"
+                style={styles.manualInput}
+                value={manualId}
+                onChangeText={handleManualIdChange}
+                placeholder="e.g. 5124"
+                placeholderTextColor="#94A3B8"
+                keyboardType="number-pad"
+                maxLength={6}
+                returnKeyType="done"
+                onSubmitEditing={handleManualLookup}
+              />
+              <TouchableOpacity testID="manual-lookup-btn" style={styles.lookupBtn} onPress={handleManualLookup} disabled={loading}>
+                {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.lookupBtnText}>LOOK UP</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -342,61 +357,70 @@ export default function ScannerScreen() {
   // Camera scanner
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.titleBar}>
-        <Text style={styles.titleText}>ESTANCIA ID CHECK</Text>
-      </View>
-      <View style={styles.statusBar}>
-        <View style={[styles.statusDot, residentCount > 0 ? styles.dotOnline : styles.dotOffline]} />
-        <Text style={styles.statusText}>{residentCount} RESIDENTS IN LOCAL DB</Text>
-      </View>
-      {!scanned && (
-        <View style={styles.cameraContainer}>
-          <CameraView
-            ref={cameraRef}
-            testID="barcode-camera"
-            style={styles.camera}
-            facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ['qr', 'code128', 'code39', 'ean13', 'ean8'] }}
-            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-          />
-          <View style={styles.overlay}>
-            <View style={styles.viewfinder}>
-              <View style={[styles.corner, styles.cornerTL]} />
-              <View style={[styles.corner, styles.cornerTR]} />
-              <View style={[styles.corner, styles.cornerBL]} />
-              <View style={[styles.corner, styles.cornerBR]} />
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+      >
+        <View style={styles.titleBar}>
+          <Text style={styles.titleText}>ESTANCIA ID CHECK</Text>
+        </View>
+        <View style={styles.statusBar}>
+          <View style={[styles.statusDot, residentCount > 0 ? styles.dotOnline : styles.dotOffline]} />
+          <Text style={styles.statusText}>{residentCount} RESIDENTS IN LOCAL DB</Text>
+        </View>
+        {!scanned && (
+          <View style={styles.cameraContainer}>
+            <CameraView
+              ref={cameraRef}
+              testID="barcode-camera"
+              style={styles.camera}
+              facing="back"
+              barcodeScannerSettings={{ barcodeTypes: ['qr', 'code128', 'code39', 'ean13', 'ean8'] }}
+              onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+            />
+            <View style={styles.overlay}>
+              <View style={styles.viewfinder}>
+                <View style={[styles.corner, styles.cornerTL]} />
+                <View style={[styles.corner, styles.cornerTR]} />
+                <View style={[styles.corner, styles.cornerBL]} />
+                <View style={[styles.corner, styles.cornerBR]} />
+              </View>
+              <Text style={styles.scanHint}>ALIGN BARCODE WITHIN FRAME</Text>
+              <TouchableOpacity testID="capture-scan-btn" style={styles.captureBtn} onPress={handleCaptureAndScan}>
+                <Ionicons name="camera" size={28} color="#FFFFFF" />
+                <Text style={styles.captureBtnText}>CAPTURE & SCAN</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={styles.scanHint}>ALIGN BARCODE WITHIN FRAME</Text>
-            <TouchableOpacity testID="capture-scan-btn" style={styles.captureBtn} onPress={handleCaptureAndScan}>
-              <Ionicons name="camera" size={28} color="#FFFFFF" />
-              <Text style={styles.captureBtnText}>CAPTURE & SCAN</Text>
+          </View>
+        )}
+        {scanned && loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#0055FF" />
+            <Text style={styles.loadingText}>LOOKING UP...</Text>
+          </View>
+        )}
+        <View style={styles.manualSection}>
+          <Text style={styles.manualLabel}>MANUAL ID ENTRY</Text>
+          <View style={styles.manualRow}>
+            <TextInput
+              testID="manual-id-input-scanner"
+              style={styles.manualInput}
+              value={manualId}
+              onChangeText={handleManualIdChange}
+              placeholder="Enter Resident ID"
+              placeholderTextColor="#94A3B8"
+              keyboardType="number-pad"
+              maxLength={6}
+              returnKeyType="done"
+              onSubmitEditing={handleManualLookup}
+            />
+            <TouchableOpacity testID="manual-lookup-btn-scanner" style={styles.lookupBtn} onPress={handleManualLookup} disabled={loading}>
+              {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Ionicons name="search" size={22} color="#FFFFFF" />}
             </TouchableOpacity>
           </View>
         </View>
-      )}
-      {scanned && loading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#0055FF" />
-          <Text style={styles.loadingText}>LOOKING UP...</Text>
-        </View>
-      )}
-      <View style={styles.manualSection}>
-        <Text style={styles.manualLabel}>MANUAL ID ENTRY</Text>
-        <View style={styles.manualRow}>
-          <TextInput
-            testID="manual-id-input-scanner"
-            style={styles.manualInput}
-            value={manualId}
-            onChangeText={setManualId}
-            placeholder="Enter Resident ID"
-            placeholderTextColor="#94A3B8"
-            autoCapitalize="characters"
-          />
-          <TouchableOpacity testID="manual-lookup-btn-scanner" style={styles.lookupBtn} onPress={handleManualLookup} disabled={loading}>
-            {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Ionicons name="search" size={22} color="#FFFFFF" />}
-          </TouchableOpacity>
-        </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
