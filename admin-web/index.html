@@ -450,6 +450,51 @@
       }
     }
 
+    async function compressImage(file, targetSizeKB) {
+      const TARGET_BYTES = targetSizeKB * 1024;
+      const img = await createImageBitmap(file);
+
+      // Scale down if needed to help reach target size
+      let width = img.width;
+      let height = img.height;
+      const MAX_DIM = 800;
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const scale = MAX_DIM / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Binary search for the right JPEG quality to hit ~targetSizeKB
+      let lo = 0.1, hi = 0.92, bestBlob = null;
+      for (let i = 0; i < 7; i++) {
+        const mid = (lo + hi) / 2;
+        const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", mid));
+        bestBlob = blob;
+        if (blob.size > TARGET_BYTES) {
+          hi = mid;
+        } else {
+          lo = mid;
+        }
+      }
+
+      // If still too large after lowest quality, scale down further
+      if (bestBlob.size > TARGET_BYTES * 1.5) {
+        const shrink = Math.sqrt(TARGET_BYTES / bestBlob.size);
+        canvas.width = Math.round(width * shrink);
+        canvas.height = Math.round(height * shrink);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        bestBlob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.7));
+      }
+
+      return bestBlob;
+    }
+
     async function downloadZip() {
       const photos = getSelectedPhotos();
       if (!photos.length) {
@@ -459,9 +504,18 @@
 
       els.downloadZipBtn.disabled = true;
       try {
-        setStatus("Creating ZIP from " + photos.length + " photo(s)...", "warn");
+        setStatus("Compressing " + photos.length + " photo(s) to ~50 KB each...", "warn");
         const zip = new JSZip();
-        photos.forEach((file) => { zip.file(getFileNameOnly(file), file); });
+
+        for (let i = 0; i < photos.length; i++) {
+          const file = photos[i];
+          setStatus("Compressing (" + (i + 1) + "/" + photos.length + "): " + file.name, "warn");
+          const compressed = await compressImage(file, 50);
+          const nameBase = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+          zip.file(nameBase, compressed);
+        }
+
+        setStatus("Creating ZIP...", "warn");
         const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
 
         const url = URL.createObjectURL(blob);
@@ -473,7 +527,7 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        setStatus("ZIP downloaded (" + photos.length + " photos, " + (blob.size / 1024).toFixed(0) + " KB).\nManually upload faces.zip to Google Drive to replace the existing ZIP.", "ok");
+        setStatus("ZIP downloaded (" + photos.length + " photos, " + (blob.size / 1024).toFixed(0) + " KB total).\nEach image compressed to ~50 KB.\nManually upload faces.zip to Google Drive to replace the existing ZIP.", "ok");
       } catch (err) {
         setStatus("ZIP creation failed: " + (err.message || err), "bad");
       } finally {
